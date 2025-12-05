@@ -30,6 +30,7 @@ import Evaluations from "@/pages/Evaluations";
 import ManagerSubmissions from "@/pages/ManagerSubmissions";
 import Meetings from "@/pages/Meetings";
 import HRMeetingsView from "@/pages/HRMeetingsView";
+import DevelopmentGoals from "@/pages/DevelopmentGoals";
 import Settings from "@/pages/Settings";
 
 function Router() {
@@ -66,6 +67,7 @@ function Router() {
           <Route path="/initiate-appraisal" component={InitiateAppraisal} />
           <Route path="/review-appraisal" component={ReviewAppraisal} />
           <Route path="/evaluations" component={Evaluations} />
+          <Route path="/development-goals" component={DevelopmentGoals} />
           <Route path="/manager-submissions" component={ManagerSubmissions} />
           <Route path="/meetings" component={Meetings} />
           <Route path="/hr-meetings" component={HRMeetingsView} />
