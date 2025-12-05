@@ -146,6 +146,9 @@ export interface IStorage {
   getEvaluationByEmployeeAndCycle(employeeId: string, reviewCycleId: string): Promise<Evaluation | undefined>;
   getEvaluationsByInitiatedAppraisal(initiatedAppraisalId: string): Promise<Evaluation[]>;
   getScheduledMeetingsForCompany(companyId: string): Promise<any[]>;
+  getEvaluationsForCalibration(companyId: string): Promise<any[]>;
+  getEvaluationById(id: string): Promise<Evaluation | undefined>;
+  updateEvaluationCalibration(id: string, calibration: { calibratedRating: number | null; calibrationRemarks: string; calibratedBy: string; calibratedAt: Date }): Promise<Evaluation>;
   
   // Email operations
   getEmailTemplates(): Promise<EmailTemplate[]>;
@@ -199,6 +202,7 @@ export interface IStorage {
   getAppraisalCycles(createdById: string): Promise<AppraisalCycle[]>;
   getAllAppraisalCycles(companyId: string): Promise<AppraisalCycle[]>; // For HR managers to see all cycles in their company
   getAppraisalCycle(id: string, createdById: string): Promise<AppraisalCycle | undefined>;
+  getAppraisalCycleById(id: string): Promise<AppraisalCycle | undefined>; // For lookups without ownership check
   createAppraisalCycle(cycle: InsertAppraisalCycle, createdById: string): Promise<AppraisalCycle>;
   updateAppraisalCycle(id: string, cycle: Partial<InsertAppraisalCycle>, createdById: string): Promise<AppraisalCycle>;
   deleteAppraisalCycle(id: string, createdById: string): Promise<void>;
@@ -214,6 +218,7 @@ export interface IStorage {
   getFrequencyCalendars(createdById: string): Promise<FrequencyCalendar[]>;
   getAllFrequencyCalendars(): Promise<FrequencyCalendar[]>; // For HR managers to see all calendars
   getFrequencyCalendar(id: string, createdById: string): Promise<FrequencyCalendar | undefined>;
+  getFrequencyCalendarById(id: string): Promise<FrequencyCalendar | undefined>; // For lookups without ownership check
   createFrequencyCalendar(calendar: InsertFrequencyCalendar, createdById: string): Promise<FrequencyCalendar>;
   updateFrequencyCalendar(id: string, calendar: Partial<InsertFrequencyCalendar>, createdById: string): Promise<FrequencyCalendar>;
   deleteFrequencyCalendar(id: string, createdById: string): Promise<void>;
@@ -261,7 +266,7 @@ export interface IStorage {
   updateScheduledTaskStatus(id: string, status: string, error?: string): Promise<void>;
   getScheduledTasksByAppraisal(appraisalId: string): Promise<ScheduledAppraisalTask[]>;
   
-  // Development Goals operations
+  // Development Goal operations
   getDevelopmentGoals(employeeId: string): Promise<DevelopmentGoal[]>;
   getDevelopmentGoalsByEvaluation(evaluationId: string): Promise<DevelopmentGoal[]>;
   getDevelopmentGoal(id: string): Promise<DevelopmentGoal | undefined>;
@@ -1053,6 +1058,93 @@ export class DatabaseStorage implements IStorage {
     }));
   }
 
+  async getEvaluationsForCalibration(companyId: string): Promise<any[]> {
+    const results = await db
+      .select({
+        evaluation: evaluations,
+        employee: users,
+        manager: {
+          id: sql`manager.id`,
+          firstName: sql`manager.first_name`,
+          lastName: sql`manager.last_name`,
+          email: sql`manager.email`,
+        },
+        location: locations,
+        initiatedAppraisal: initiatedAppraisals,
+        appraisalGroup: appraisalGroups,
+        frequencyCalendar: frequencyCalendars,
+      })
+      .from(evaluations)
+      .leftJoin(users, eq(evaluations.employeeId, users.id))
+      .leftJoin(sql`users as manager`, sql`${evaluations.managerId} = manager.id`)
+      .leftJoin(locations, eq(users.locationId, locations.id))
+      .leftJoin(initiatedAppraisals, eq(evaluations.initiatedAppraisalId, initiatedAppraisals.id))
+      .leftJoin(appraisalGroups, eq(initiatedAppraisals.appraisalGroupId, appraisalGroups.id))
+      .leftJoin(frequencyCalendars, eq(initiatedAppraisals.frequencyCalendarId, frequencyCalendars.id))
+      .where(
+        and(
+          eq(users.companyId, companyId),
+          isNotNull(evaluations.overallRating)
+        )
+      )
+      .orderBy(desc(evaluations.updatedAt));
+    
+    return results.map(result => ({
+      id: result.evaluation.id,
+      employeeId: result.evaluation.employeeId,
+      employeeName: result.employee ? `${result.employee.firstName} ${result.employee.lastName}` : 'Unknown',
+      employeeCode: result.employee?.code || 'N/A',
+      managerId: result.evaluation.managerId,
+      managerName: result.manager ? `${result.manager.firstName} ${result.manager.lastName}` : 'Unknown',
+      locationId: result.employee?.locationId,
+      locationName: result.location?.name || 'N/A',
+      department: result.employee?.department || 'N/A',
+      level: result.employee?.level || 'N/A',
+      grade: result.employee?.grade || 'N/A',
+      appraisalGroupId: result.initiatedAppraisal?.appraisalGroupId,
+      appraisalGroupName: result.appraisalGroup?.name || 'N/A',
+      frequencyCalendarId: result.initiatedAppraisal?.frequencyCalendarId,
+      frequencyCalendarName: result.frequencyCalendar?.name || 'N/A',
+      overallRating: result.evaluation.overallRating,
+      calibratedRating: result.evaluation.calibratedRating,
+      calibrationRemarks: result.evaluation.calibrationRemarks,
+      calibratedBy: result.evaluation.calibratedBy,
+      calibratedAt: result.evaluation.calibratedAt,
+      meetingCompletedAt: result.evaluation.meetingCompletedAt,
+    }));
+  }
+
+  async getEvaluationById(id: string): Promise<Evaluation | undefined> {
+    const [evaluation] = await db
+      .select()
+      .from(evaluations)
+      .where(eq(evaluations.id, id));
+    return evaluation;
+  }
+
+  async updateEvaluationCalibration(
+    id: string, 
+    calibration: { 
+      calibratedRating: number | null; 
+      calibrationRemarks: string; 
+      calibratedBy: string; 
+      calibratedAt: Date;
+    }
+  ): Promise<Evaluation> {
+    const [updatedEvaluation] = await db
+      .update(evaluations)
+      .set({
+        calibratedRating: calibration.calibratedRating,
+        calibrationRemarks: calibration.calibrationRemarks,
+        calibratedBy: calibration.calibratedBy,
+        calibratedAt: calibration.calibratedAt,
+        updatedAt: new Date(),
+      })
+      .where(eq(evaluations.id, id))
+      .returning();
+    return updatedEvaluation;
+  }
+
   // Email operations
   async getEmailTemplates(): Promise<EmailTemplate[]> {
     return await db.select().from(emailTemplates).orderBy(asc(emailTemplates.name));
@@ -1505,6 +1597,13 @@ export class DatabaseStorage implements IStorage {
     return cycle;
   }
 
+  async getAppraisalCycleById(id: string): Promise<AppraisalCycle | undefined> {
+    const [cycle] = await db.select().from(appraisalCycles).where(
+      eq(appraisalCycles.id, id)
+    );
+    return cycle;
+  }
+
   async createAppraisalCycle(cycle: InsertAppraisalCycle, createdById: string): Promise<AppraisalCycle> {
     const [newCycle] = await db.insert(appraisalCycles).values({
       ...cycle,
@@ -1640,6 +1739,13 @@ export class DatabaseStorage implements IStorage {
         eq(frequencyCalendars.id, id),
         eq(frequencyCalendars.createdById, createdById)
       )
+    );
+    return calendar;
+  }
+
+  async getFrequencyCalendarById(id: string): Promise<FrequencyCalendar | undefined> {
+    const [calendar] = await db.select().from(frequencyCalendars).where(
+      eq(frequencyCalendars.id, id)
     );
     return calendar;
   }
@@ -2409,7 +2515,7 @@ export class DatabaseStorage implements IStorage {
       .orderBy(asc(scheduledAppraisalTasks.scheduledDate));
   }
 
-  // Development Goals operations
+  // Development Goal operations
   async getDevelopmentGoals(employeeId: string): Promise<DevelopmentGoal[]> {
     return await db
       .select()
@@ -2435,14 +2541,37 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createDevelopmentGoal(goal: InsertDevelopmentGoal): Promise<DevelopmentGoal> {
-    const [newGoal] = await db.insert(developmentGoals).values(goal).returning();
+    // Calculate initial status based on target date and progress
+    const status = this.calculateGoalStatus(goal.progress || 0, goal.targetDate);
+    
+    const [newGoal] = await db
+      .insert(developmentGoals)
+      .values({
+        ...goal,
+        status,
+      })
+      .returning();
     return newGoal;
   }
 
   async updateDevelopmentGoal(id: string, goal: UpdateDevelopmentGoal): Promise<DevelopmentGoal> {
+    // Get current goal to calculate status if progress is being updated
+    const currentGoal = await this.getDevelopmentGoal(id);
+    if (!currentGoal) {
+      throw new Error('Development goal not found');
+    }
+
+    const progress = goal.progress ?? currentGoal.progress ?? 0;
+    const targetDate = goal.targetDate ?? currentGoal.targetDate;
+    const status = this.calculateGoalStatus(progress, targetDate);
+
     const [updatedGoal] = await db
       .update(developmentGoals)
-      .set({ ...goal, updatedAt: new Date() })
+      .set({
+        ...goal,
+        status,
+        updatedAt: new Date(),
+      })
       .where(eq(developmentGoals.id, id))
       .returning();
     return updatedGoal;
@@ -2450,6 +2579,34 @@ export class DatabaseStorage implements IStorage {
 
   async deleteDevelopmentGoal(id: string): Promise<void> {
     await db.delete(developmentGoals).where(eq(developmentGoals.id, id));
+  }
+
+  // Helper function to calculate goal status based on progress and target date
+  private calculateGoalStatus(progress: number, targetDate: Date): 'on_track' | 'delayed' | 'completed' | 'not_started' {
+    if (progress >= 100) {
+      return 'completed';
+    }
+    
+    if (progress === 0) {
+      return 'not_started';
+    }
+    
+    const today = new Date();
+    const target = new Date(targetDate);
+    const totalDays = Math.ceil((target.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+    
+    // If target date has passed and not completed
+    if (target < today) {
+      return 'delayed';
+    }
+    
+    // Calculate expected progress based on time elapsed
+    // If we're past the target date or significantly behind, mark as delayed
+    if (totalDays < 0 || (totalDays < 30 && progress < 50) || (totalDays < 7 && progress < 80)) {
+      return 'delayed';
+    }
+    
+    return 'on_track';
   }
 }
 

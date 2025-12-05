@@ -31,7 +31,7 @@ import {
   type SafeUser,
 } from "@shared/schema";
 import { sendEmail, sendReviewInvitation, sendReviewReminder, sendReviewCompletion, generateRegistrationNotificationEmail, sendEmployeeSubmissionNotification } from "./emailService";
-import { ObjectStorageService } from "./objectStorage";
+import { ObjectStorageService, parseObjectPath, signObjectURL } from "./objectStorage";
 import { seedTestUsers, testUsers } from "./seedUsers";
 import * as XLSX from 'xlsx';
 import PDFDocument from 'pdfkit';
@@ -548,33 +548,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const requestingUserId = req.user.claims.sub;
       const users = await storage.getUsers({}, requestingUserId);
-      const evaluations = await storage.getEvaluations();
       
-      // Get direct reports
-      const directReports = users.filter(u => u.managerId === requestingUserId);
+      // Get evaluations where user is the manager
+      const managerEvaluations = await storage.getEvaluations({ managerId: requestingUserId });
+      
+      // Get direct reports (users who report to this manager)
+      const directReports = users.filter(u => u.reportingManagerId === requestingUserId);
       const directReportIds = directReports.map(u => u.id);
       
-      // Get evaluations for direct reports
-      const teamEvaluations = evaluations.filter(e => 
+      // Get evaluations for direct reports (where this user is the manager)
+      const teamEvaluations = managerEvaluations.filter(e => 
         directReportIds.includes(e.employeeId));
       
-      const pendingReviews = teamEvaluations.filter(e => 
-        e.selfEvaluationData && !e.managerEvaluationData);
-      const completedReviews = teamEvaluations.filter(e => 
-        e.managerEvaluationData);
-      const overdueReviews = teamEvaluations.filter(e => 
-        e.status === 'in_progress' && Math.random() < 0.1);
+      const pendingReviews = managerEvaluations.filter(e => 
+        e.selfEvaluationSubmittedAt && !e.managerEvaluationSubmittedAt);
+      const completedReviews = managerEvaluations.filter(e => 
+        e.managerEvaluationSubmittedAt);
+      
+      // Calculate actual scheduled meetings (scheduled but not completed)
+      const scheduledMeetings = managerEvaluations.filter(e => 
+        e.meetingScheduledAt && !e.meetingCompletedAt);
+      
+      // Calculate completed meetings
+      const meetingsCompleted = managerEvaluations.filter(e => 
+        e.meetingCompletedAt);
+      
+      // Calculate average rating from completed evaluations
+      const ratingsWithValues = managerEvaluations
+        .filter(e => e.overallRating !== null && e.overallRating !== undefined)
+        .map(e => e.overallRating as number);
+      const teamAverageRating = ratingsWithValues.length > 0 
+        ? ratingsWithValues.reduce((sum, r) => sum + r, 0) / ratingsWithValues.length 
+        : 0;
       
       const metrics = {
         directReports: directReports.length,
         pendingReviews: pendingReviews.length,
         completedReviews: completedReviews.length,
-        scheduledMeetings: Math.floor(Math.random() * 5) + 2,
-        overdueReviews: overdueReviews.length,
-        teamAverageRating: 4.1,
-        meetingsCompleted: Math.floor(Math.random() * 8) + 3,
-        teamCompletionRate: teamEvaluations.length > 0 ? 
-          Math.round((completedReviews.length / teamEvaluations.length) * 100) : 0,
+        scheduledMeetings: scheduledMeetings.length,
+        overdueReviews: 0,
+        teamAverageRating: Number(teamAverageRating.toFixed(1)),
+        meetingsCompleted: meetingsCompleted.length,
+        teamCompletionRate: managerEvaluations.length > 0 ? 
+          Math.round((completedReviews.length / managerEvaluations.length) * 100) : 0,
       };
 
       res.json(metrics);
@@ -810,45 +826,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/dashboard/employee/goals', isAuthenticated, requireRoles(['super_admin', 'admin', 'hr_manager', 'manager', 'employee']), async (req: any, res) => {
     try {
-      // Mock goals for now - in a real app these would be stored in database
-      const goals = [
-        {
-          id: '1',
-          title: 'Improve JavaScript Skills',
-          description: 'Complete advanced JavaScript course and build 3 projects',
-          progress: 75,
-          targetDate: '2024-03-31',
-          status: 'on_track',
-          category: 'technical',
-        },
-        {
-          id: '2',
-          title: 'Team Leadership',
-          description: 'Lead 2 cross-functional projects and mentor junior developers',
-          progress: 50,
-          targetDate: '2024-06-30',
-          status: 'on_track',
-          category: 'leadership',
-        },
-        {
-          id: '3',
-          title: 'Communication Skills',
-          description: 'Present at team meetings and improve stakeholder communication',
-          progress: 30,
-          targetDate: '2024-04-30',
-          status: 'at_risk',
-          category: 'communication',
-        },
-        {
-          id: '4',
-          title: 'Productivity Improvement',
-          description: 'Increase sprint velocity by 20% through better planning',
-          progress: 90,
-          targetDate: '2024-02-28',
-          status: 'on_track',
-          category: 'productivity',
-        },
-      ];
+      const employeeId = req.user.claims.sub;
+      
+      // Fetch real development goals from the database
+      const developmentGoals = await storage.getDevelopmentGoals(employeeId);
+      
+      // Transform to match the dashboard format
+      const goals = developmentGoals.map(goal => {
+        // Calculate status based on progress and target date
+        const now = new Date();
+        const targetDate = new Date(goal.targetDate);
+        const daysUntilTarget = Math.ceil((targetDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+        
+        let status = 'on_track';
+        if (goal.progressPercentage === 100) {
+          status = 'completed';
+        } else if (daysUntilTarget < 0) {
+          status = 'behind';
+        } else if (daysUntilTarget < 14 && goal.progressPercentage < 75) {
+          status = 'at_risk';
+        } else if (daysUntilTarget < 30 && goal.progressPercentage < 50) {
+          status = 'at_risk';
+        }
+        
+        return {
+          id: goal.id,
+          title: goal.description.substring(0, 50) + (goal.description.length > 50 ? '...' : ''),
+          description: goal.plannedOutcome || goal.description,
+          progress: goal.progressPercentage,
+          targetDate: new Date(goal.targetDate).toISOString().split('T')[0],
+          status: status,
+          category: 'development',
+        };
+      });
 
       res.json(goals);
     } catch (error) {
@@ -876,6 +886,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error creating company:", error);
       res.status(500).json({ message: "Failed to create company" });
+    }
+  });
+
+  // Get current user's company (must be before :id routes)
+  app.get('/api/companies/current', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      
+      if (!user || !user.companyId) {
+        return res.status(404).json({ message: "Company not found" });
+      }
+      
+      const company = await storage.getCompany(user.companyId);
+      if (!company) {
+        return res.status(404).json({ message: "Company not found" });
+      }
+      
+      res.json(company);
+    } catch (error) {
+      console.error("Error fetching current company:", error);
+      res.status(500).json({ message: "Failed to fetch company" });
+    }
+  });
+
+  // Update company logo (must be before :id routes)
+  app.put('/api/companies/current/logo', isAuthenticated, async (req: any, res) => {
+    try {
+      console.log('Logo update request - User:', req.user?.claims?.sub);
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      
+      // Verify user is admin
+      if (!user || (user.role !== 'admin' && user.role !== 'super_admin')) {
+        return res.status(403).json({ message: "Only administrators can update company logo" });
+      }
+      
+      if (!user.companyId) {
+        return res.status(404).json({ message: "Company not found" });
+      }
+      
+      const { logoUrl } = req.body;
+      if (!logoUrl || typeof logoUrl !== 'string') {
+        return res.status(400).json({ message: "Logo URL is required" });
+      }
+      
+      const updatedCompany = await storage.updateCompany(user.companyId, { logoUrl });
+      res.json(updatedCompany);
+    } catch (error) {
+      console.error("Error updating company logo:", error);
+      res.status(500).json({ message: "Failed to update company logo" });
     }
   });
 
@@ -1586,11 +1647,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         status: status as string,
       };
 
-      // Apply role-based access control
-      if (currentUser.role === 'employee') {
+      // Use active role from session for role switching support
+      const activeRole = req.user.activeRole || currentUser.role;
+
+      // Apply role-based access control based on active role
+      if (activeRole === 'employee') {
         // Employees can only see their own evaluations
         filters.employeeId = currentUser.id;
-      } else if (currentUser.role === 'manager') {
+      } else if (activeRole === 'manager') {
         // Managers can see evaluations they manage or their own
         if (!filters.employeeId && !filters.managerId) {
           // If no specific filter, show evaluations where they are the manager or employee
@@ -1852,6 +1916,73 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error generating evaluations:", error);
       res.status(500).json({ message: "Failed to generate evaluations" });
+    }
+  });
+
+  // Get evaluations for calibration - HR Manager only
+  app.get('/api/evaluations/calibrate', isAuthenticated, requireRoles(['hr_manager']), async (req: any, res) => {
+    try {
+      const requestingUserId = req.user.claims.sub;
+      
+      // Get requesting user to determine company
+      const requestingUser = await storage.getUser(requestingUserId);
+      if (!requestingUser?.companyId) {
+        return res.status(403).json({ message: "User company not found" });
+      }
+      
+      // Get all evaluations with completed manager ratings
+      const evaluations = await storage.getEvaluationsForCalibration(requestingUser.companyId);
+      
+      res.json(evaluations);
+    } catch (error) {
+      console.error("Error fetching evaluations for calibration:", error);
+      res.status(500).json({ message: "Failed to fetch evaluations for calibration" });
+    }
+  });
+
+  // Update calibrated rating for an evaluation - HR Manager only
+  app.patch('/api/evaluations/:id/calibrate', isAuthenticated, requireRoles(['hr_manager']), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const { calibratedRating, calibrationRemarks } = req.body;
+      const requestingUserId = req.user.claims.sub;
+      
+      // Get requesting user to verify company access
+      const requestingUser = await storage.getUser(requestingUserId);
+      if (!requestingUser?.companyId) {
+        return res.status(403).json({ message: "User company not found" });
+      }
+      
+      // Get the evaluation
+      const evaluation = await storage.getEvaluationById(id);
+      if (!evaluation) {
+        return res.status(404).json({ message: "Evaluation not found" });
+      }
+      
+      // Verify the employee belongs to the same company
+      const employee = await storage.getUser(evaluation.employeeId);
+      if (employee?.companyId !== requestingUser.companyId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      // Update calibration
+      const updatedEvaluation = await storage.updateEvaluationCalibration(id, {
+        calibratedRating,
+        calibrationRemarks,
+        calibratedBy: requestingUserId,
+        calibratedAt: new Date(),
+      });
+      
+      // Get employee details for response
+      const employeeName = employee ? `${employee.firstName} ${employee.lastName}` : 'Unknown';
+      
+      res.json({
+        ...updatedEvaluation,
+        employeeName,
+      });
+    } catch (error) {
+      console.error("Error updating calibration:", error);
+      res.status(500).json({ message: "Failed to update calibration" });
     }
   });
 
@@ -2300,6 +2431,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error setting company logo:", error);
       res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Serve objects from object storage (public access only)
+  app.get('/objects/*', async (req, res) => {
+    try {
+      const objectStorageService = new ObjectStorageService();
+      const normalizedPath = req.path; // e.g., /objects/uploads/xxx
+      
+      // Get the object file to check permissions
+      const objectFile = await objectStorageService.getObjectEntityFile(normalizedPath);
+      
+      // Verify the object is publicly accessible (visibility === "public")
+      // This prevents unauthorized access to private objects
+      const userId = (req.user as any)?.claims?.sub;
+      const canAccess = await objectStorageService.canAccessObjectEntity({
+        userId,
+        objectFile,
+        requestedPermission: undefined, // READ permission
+      });
+      
+      if (!canAccess) {
+        return res.status(403).send("Access denied");
+      }
+      
+      // Extract the entity ID from the path
+      const entityId = req.path.replace('/objects/', '');
+      
+      // Convert to the full object storage path
+      const privateObjectDir = objectStorageService.getPrivateObjectDir();
+      if (!privateObjectDir) {
+        throw new Error("Object storage not configured");
+      }
+      
+      const fullPath = `${privateObjectDir}/${entityId}`;
+      
+      // Get a signed GET URL for the object
+      const { bucketName, objectName } = parseObjectPath(fullPath);
+      const signedUrl = await signObjectURL({
+        bucketName,
+        objectName,
+        method: "GET",
+        ttlSec: 3600, // 1 hour
+      });
+      
+      // Redirect to the signed URL
+      res.redirect(signedUrl);
+    } catch (error) {
+      console.error("Error serving object:", error);
+      res.status(404).send("Object not found");
     }
   });
 
@@ -4148,7 +4329,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Add or update meeting notes
-  app.put('/api/evaluations/:id/meeting-notes', isAuthenticated, requireRoles(['manager']), async (req: any, res) => {
+  app.put('/api/evaluations/:id/meeting-notes', isAuthenticated, async (req: any, res) => {
     try {
       const evaluationId = req.params.id;
       const managerId = req.user.claims.sub;
@@ -4200,7 +4381,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Mark evaluation as completed and send notifications
-  app.post('/api/evaluations/:id/complete', isAuthenticated, requireRoles(['manager']), async (req: any, res) => {
+  app.post('/api/evaluations/:id/complete', isAuthenticated, async (req: any, res) => {
     try {
       const evaluationId = req.params.id;
       const managerId = req.user.claims.sub;
@@ -4302,9 +4483,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // ================== DEVELOPMENT GOALS ROUTES ==================
-
-  // Get all development goals for the authenticated employee
+  // Development Goals API routes
+  
+  // Get all development goals for current employee
   app.get('/api/development-goals', isAuthenticated, async (req: any, res) => {
     try {
       const employeeId = req.user.claims.sub;
@@ -4402,57 +4583,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const withMeeting = evaluations.filter(e => e.meetingCompletedAt);
       
       const eligibleEvaluations = await Promise.all(
-        withMeeting.map(async (evaluation) => {
-          let appraisalCycle = null;
-          let frequencyCalendarPeriod = null;
-          let isActiveAppraisalCycle = false;
-          
-          if (evaluation.initiatedAppraisalId) {
-            const initiatedAppraisal = await storage.getInitiatedAppraisal(evaluation.initiatedAppraisalId);
+        withMeeting
+          .map(async (evaluation) => {
+            let appraisalCycle = null;
+            let frequencyCalendarPeriod = null;
+            let isActiveAppraisalCycle = false;
             
-            if (initiatedAppraisal?.frequencyCalendarId) {
-              const frequencyCalendar = await storage.getFrequencyCalendarById(initiatedAppraisal.frequencyCalendarId);
+            if (evaluation.initiatedAppraisalId) {
+              const initiatedAppraisal = await storage.getInitiatedAppraisal(evaluation.initiatedAppraisalId);
               
-              if (frequencyCalendar?.appraisalCycleId) {
-                appraisalCycle = await storage.getAppraisalCycleById(frequencyCalendar.appraisalCycleId);
-                isActiveAppraisalCycle = appraisalCycle?.status === 'active';
-              }
-              
-              // Get the frequency calendar period from initiated_appraisal_detail_timings
-              const detailTimings = await storage.getInitiatedAppraisalDetailTimings(evaluation.initiatedAppraisalId!);
-              if (detailTimings.length > 0) {
-                const detailTiming = detailTimings[0];
-                const calendarDetails = await storage.getFrequencyCalendarDetailsByCalendarId(initiatedAppraisal.frequencyCalendarId);
-                const matchingDetail = calendarDetails.find(d => d.id === detailTiming.frequencyCalendarDetailId);
-                if (matchingDetail) {
-                  frequencyCalendarPeriod = {
-                    displayName: matchingDetail.displayName,
-                    startDate: matchingDetail.startDate,
-                    endDate: matchingDetail.endDate,
-                  };
+              if (initiatedAppraisal?.frequencyCalendarId) {
+                const frequencyCalendar = await storage.getFrequencyCalendarById(initiatedAppraisal.frequencyCalendarId);
+                
+                if (frequencyCalendar?.appraisalCycleId) {
+                  appraisalCycle = await storage.getAppraisalCycleById(frequencyCalendar.appraisalCycleId);
+                  isActiveAppraisalCycle = appraisalCycle?.status === 'active';
+                }
+                
+                // Get the frequency calendar period from initiated_appraisal_detail_timings
+                const detailTimings = await storage.getInitiatedAppraisalDetailTimings(evaluation.initiatedAppraisalId!);
+                if (detailTimings.length > 0) {
+                  const detailTiming = detailTimings[0]; // Each initiated appraisal typically has one period
+                  const calendarDetails = await storage.getFrequencyCalendarDetailsByCalendarId(initiatedAppraisal.frequencyCalendarId);
+                  const matchingDetail = calendarDetails.find(d => d.id === detailTiming.frequencyCalendarDetailId);
+                  if (matchingDetail) {
+                    frequencyCalendarPeriod = {
+                      displayName: matchingDetail.displayName,
+                      startDate: matchingDetail.startDate,
+                      endDate: matchingDetail.endDate,
+                    };
+                  }
                 }
               }
             }
-          }
-          
-          // Get existing goals count for this evaluation
-          const existingGoals = await storage.getDevelopmentGoalsByEvaluation(evaluation.id);
-          
-          return {
-            id: evaluation.id,
-            meetingCompletedAt: evaluation.meetingCompletedAt,
-            overallRating: evaluation.overallRating,
-            appraisalCycle: appraisalCycle ? {
-              id: appraisalCycle.id,
-              code: appraisalCycle.code,
-              description: appraisalCycle.description,
-              status: appraisalCycle.status,
-            } : null,
-            frequencyCalendarPeriod,
-            isActiveAppraisalCycle,
-            goalsCount: existingGoals.length,
-          };
-        })
+            
+            // Get existing goals count for this evaluation
+            const existingGoals = await storage.getDevelopmentGoalsByEvaluation(evaluation.id);
+            
+            return {
+              id: evaluation.id,
+              meetingCompletedAt: evaluation.meetingCompletedAt,
+              overallRating: evaluation.overallRating,
+              appraisalCycle: appraisalCycle ? {
+                id: appraisalCycle.id,
+                code: appraisalCycle.code,
+                description: appraisalCycle.description,
+                status: appraisalCycle.status,
+              } : null,
+              frequencyCalendarPeriod,
+              isActiveAppraisalCycle,
+              goalsCount: existingGoals.length,
+            };
+          })
       );
       
       // Only return evaluations with active appraisal cycles
@@ -4492,9 +4674,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (evaluation.initiatedAppraisalId) {
         const initiatedAppraisal = await storage.getInitiatedAppraisal(evaluation.initiatedAppraisalId);
         if (initiatedAppraisal?.frequencyCalendarId) {
-          const frequencyCalendar = await storage.getFrequencyCalendarById(initiatedAppraisal.frequencyCalendarId);
+          const frequencyCalendar = await storage.getFrequencyCalendar(initiatedAppraisal.frequencyCalendarId, '');
           if (frequencyCalendar?.appraisalCycleId) {
-            const appraisalCycle = await storage.getAppraisalCycleById(frequencyCalendar.appraisalCycleId);
+            const appraisalCycle = await storage.getAppraisalCycle(frequencyCalendar.appraisalCycleId, '');
             if (appraisalCycle?.status !== 'active') {
               return res.status(400).json({ message: "Development goals can only be added for active appraisal cycles" });
             }

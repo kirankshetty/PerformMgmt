@@ -67,6 +67,7 @@ For testing HR Manager functionality:
 - **Password Management**: All user roles (HR Manager, Employee, Manager, Administrator, Super Administrator) can change their own passwords through the Settings page with secure validation and current password verification.
 - **Meeting Scheduler**: Streamlined one-on-one meeting scheduler with single preferred date/time selection. Modal optimized for 100% zoom visibility (max-w-xl, max-h-90vh with scrolling).
 - **Meeting Notes with Visibility Control**: Managers can add meeting notes after completing performance reviews with a toggle to control whether notes are visible to employees. The "Show notes to employee" setting defaults to "No" (hidden) and is preserved when editing notes. Meeting notes visibility is enforced in all email notifications based on this setting.
+- **Development Goals**: Employees can set development goals linked to their completed evaluations. Goals include description, planned outcome, target date, and progress tracking. Goals are grouped by appraisal cycle and accessible from the sidebar menu ("Set Development Goals"), the My Evaluations page (via "Add Goal" button for completed evaluations), and the Employee Dashboard's Active Goals card. The system automatically calculates goal status (not_started, on_track, delayed, completed) based on progress percentage and target dates.
 
 ## External Dependencies
 

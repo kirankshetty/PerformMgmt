@@ -730,58 +730,62 @@ export default function QuestionnaireTemplates() {
             </div>
           ) : (
             filteredTemplates.map((template) => (
-              <Card key={template.id} data-testid={`template-card-${template.id}`}>
-                <CardContent className="p-6">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-center gap-3 flex-1 min-w-0">
-                      <div className="w-12 h-12 bg-primary rounded-lg flex items-center justify-center flex-shrink-0">
-                        <FileText className="h-6 w-6 text-primary-foreground" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <h3 className="font-semibold truncate" data-testid={`template-name-${template.id}`}>
-                          {template.name}
-                        </h3>
-                        <div className="flex gap-2 mt-1">
-                          <Badge variant="secondary">
-                            {template.targetRole}
-                          </Badge>
-                          <Badge variant={template.status === 'active' ? 'default' : 'secondary'}>
-                            {template.status}
-                          </Badge>
-                        </div>
-                      </div>
+              <Card key={template.id} data-testid={`template-card-${template.id}`} className="relative">
+                <CardContent className="p-6 pt-12">
+                  {/* Action buttons positioned at top-right corner */}
+                  <div className="absolute top-4 right-4 flex gap-2">
+                    <RoleGuard allowedRoles={['admin', 'hr_manager']}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleCopy(template.id)}
+                        disabled={copyTemplateMutation.isPending}
+                        data-testid={`copy-template-${template.id}`}
+                        title="Copy Template"
+                        className="h-8 w-8 p-0"
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </RoleGuard>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleEdit(template)}
+                      data-testid={`edit-template-${template.id}`}
+                      title="Edit Template"
+                      className="h-8 w-8 p-0"
+                    >
+                      <Edit className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleDelete(template.id)}
+                      data-testid={`delete-template-${template.id}`}
+                      title="Delete Template"
+                      className="h-8 w-8 p-0"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+
+                  {/* Card content */}
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-12 h-12 bg-primary rounded-lg flex items-center justify-center flex-shrink-0">
+                      <FileText className="h-6 w-6 text-primary-foreground" />
                     </div>
-                    <div className="flex gap-2 flex-shrink-0 mt-1">
-                      <RoleGuard allowedRoles={['admin', 'hr_manager']}>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleCopy(template.id)}
-                          disabled={copyTemplateMutation.isPending}
-                          data-testid={`copy-template-${template.id}`}
-                          title="Copy Template"
-                        >
-                          <Copy className="h-4 w-4" />
-                        </Button>
-                      </RoleGuard>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleEdit(template)}
-                        data-testid={`edit-template-${template.id}`}
-                        title="Edit Template"
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleDelete(template.id)}
-                        data-testid={`delete-template-${template.id}`}
-                        title="Delete Template"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="font-semibold truncate" data-testid={`template-name-${template.id}`}>
+                        {template.name}
+                      </h3>
+                      <div className="flex gap-2 mt-1">
+                        <Badge variant="secondary">
+                          {template.targetRole}
+                        </Badge>
+                        <Badge variant={template.status === 'active' ? 'default' : 'secondary'}>
+                          {template.status}
+                        </Badge>
+                      </div>
                     </div>
                   </div>
                   

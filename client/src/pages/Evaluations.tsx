@@ -25,8 +25,10 @@ import {
   Clock,
   Star,
   FileText,
-  Play
+  Play,
+  Target
 } from "lucide-react";
+import { Link } from "wouter";
 import type { Evaluation, User as UserType, ReviewCycle, AppraisalCycle, FrequencyCalendar, FrequencyCalendarDetails } from "@shared/schema";
 
 interface EvaluationWithDetails extends Evaluation {
@@ -563,12 +565,12 @@ export default function Evaluations() {
                       </div>
 
                       {/* Manager Feedback Section - visible when manager has provided feedback */}
-                      {(evaluation.managerEvaluationData?.managerRemarks || evaluation.meetingNotes || evaluation.finalizedAt) && (
+                      {((evaluation.managerEvaluationData as any)?.managerRemarks || evaluation.meetingNotes || evaluation.finalizedAt) && (
                         <div className="mt-4 pt-4 border-t border-border space-y-3">
                           <h4 className="font-medium text-sm text-muted-foreground">Manager Feedback</h4>
                           
                           {/* Manager Remarks */}
-                          {evaluation.managerEvaluationData?.managerRemarks && (
+                          {(evaluation.managerEvaluationData as any)?.managerRemarks && (
                             <div className="bg-blue-50 p-3 rounded-lg space-y-2">
                               <div className="flex items-center gap-2">
                                 <FileText className="h-4 w-4 text-blue-600" />
@@ -580,7 +582,7 @@ export default function Evaluations() {
                                 )}
                               </div>
                               <p className="text-sm text-blue-900 whitespace-pre-wrap">
-                                {evaluation.managerEvaluationData.managerRemarks}
+                                {(evaluation.managerEvaluationData as any).managerRemarks}
                               </p>
                             </div>
                           )}
@@ -671,6 +673,18 @@ export default function Evaluations() {
                           <Calendar className="h-4 w-4 mr-2" />
                           Schedule 1 on 1
                         </Button>
+                      )}
+                      {evaluation.meetingCompletedAt && (
+                        <Link href="/development-goals">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            data-testid={`add-goal-${evaluation.id}`}
+                          >
+                            <Target className="h-4 w-4 mr-2" />
+                            Add Goal
+                          </Button>
+                        </Link>
                       )}
                     </div>
                   </div>

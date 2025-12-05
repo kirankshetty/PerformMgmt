@@ -174,6 +174,10 @@ export const evaluations = pgTable("evaluations", {
   managerEvaluationData: jsonb("manager_evaluation_data"), // Manager responses
   managerEvaluationSubmittedAt: timestamp("manager_evaluation_submitted_at"),
   overallRating: integer("overall_rating"),
+  calibratedRating: integer("calibrated_rating"), // HR-adjusted rating
+  calibrationRemarks: text("calibration_remarks"), // Optional remarks from HR for calibration
+  calibratedBy: varchar("calibrated_by"), // User ID of HR manager who calibrated
+  calibratedAt: timestamp("calibrated_at"), // When the calibration was done
   status: varchar("status").default('not_started'), // not_started, in_progress, completed, overdue
   meetingScheduledAt: timestamp("meeting_scheduled_at"),
   meetingNotes: text("meeting_notes"),
@@ -943,7 +947,7 @@ export const developmentGoals = pgTable("development_goals", {
   description: text("description").notNull(),
   plannedOutcome: text("planned_outcome").notNull(),
   targetDate: timestamp("target_date").notNull(),
-  progress: integer("progress").default(0),
+  progress: integer("progress").default(0), // 0-100 percentage
   status: goalStatusEnum("status").default('not_started'),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -983,7 +987,7 @@ export const updateDevelopmentGoalSchema = z.object({
   progress: z.number().min(0).max(100).optional(),
 }).strict();
 
-// Export types for development goals
+// Export types
 export type DevelopmentGoal = typeof developmentGoals.$inferSelect;
 export type InsertDevelopmentGoal = z.infer<typeof insertDevelopmentGoalSchema>;
 export type UpdateDevelopmentGoal = z.infer<typeof updateDevelopmentGoalSchema>;

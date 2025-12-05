@@ -186,22 +186,24 @@ export default function EmployeeDashboard() {
           </CardContent>
         </Card>
 
-        <Card data-testid="development-goals-card">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Active Goals</p>
-                <p className="text-2xl font-bold">{metrics?.improvementGoals || 0}</p>
+        <Link href="/development-goals">
+          <Card data-testid="development-goals-card" className="cursor-pointer hover:bg-muted/50 transition-colors">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Active Goals</p>
+                  <p className="text-2xl font-bold">{metrics?.improvementGoals || 0}</p>
+                </div>
+                <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                  <Target className="h-5 w-5 text-blue-600" />
+                </div>
               </div>
-              <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                <Target className="h-5 w-5 text-blue-600" />
+              <div className="mt-4">
+                <span className="text-xs text-blue-600">Click to view or add goals</span>
               </div>
-            </div>
-            <div className="mt-4">
-              <span className="text-xs text-blue-600">In progress</span>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </Link>
       </div>
 
       {/* Recent Evaluations and Upcoming Tasks */}
@@ -320,8 +322,8 @@ export default function EmployeeDashboard() {
             <CardTitle>Development Goals</CardTitle>
             <CardDescription>Track progress on your professional development objectives</CardDescription>
           </div>
-          <Button variant="outline" size="sm">
-            Add Goal
+          <Button variant="outline" size="sm" asChild>
+            <Link href="/development-goals">Add Goal</Link>
           </Button>
         </CardHeader>
         <CardContent>
