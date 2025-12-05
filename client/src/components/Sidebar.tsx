@@ -23,6 +23,7 @@ import {
   Play,
   Search,
   CalendarCheck,
+  Target,
 } from "lucide-react";
 
 interface NavItem {
@@ -50,6 +51,7 @@ const navItems: NavItem[] = [
   { href: "/hr-meetings", label: "View Meetings", icon: CalendarCheck, roles: ["hr_manager"] },
   { href: "/questionnaires", label: "Questionnaires", icon: FileText, roles: ["super_admin", "admin", "hr_manager"] },
   { href: "/evaluations", label: "My Evaluations", icon: ClipboardList, roles: ["employee"] },
+  { href: "/development-goals", label: "My Development Goals", icon: Target, roles: ["employee"] },
   { href: "/manager-submissions", label: "Submissions", icon: ClipboardList, roles: ["manager"] },
   { href: "/meetings", label: "Meetings", icon: Calendar, roles: ["employee", "manager"] },
   { href: "/settings", label: "Settings", icon: Settings },
