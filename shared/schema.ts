@@ -931,3 +931,59 @@ export type InitiatedAppraisalDetailTiming = typeof initiatedAppraisalDetailTimi
 export type InsertInitiatedAppraisalDetailTiming = z.infer<typeof insertInitiatedAppraisalDetailTimingSchema>;
 export type ScheduledAppraisalTask = typeof scheduledAppraisalTasks.$inferSelect;
 export type InsertScheduledAppraisalTask = z.infer<typeof insertScheduledAppraisalTaskSchema>;
+
+// Goal status enum
+export const goalStatusEnum = pgEnum('goal_status', ['on_track', 'delayed', 'completed', 'not_started']);
+
+// Development Goals table - Employee development goals linked to evaluations
+export const developmentGoals = pgTable("development_goals", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  evaluationId: varchar("evaluation_id").notNull(),
+  employeeId: varchar("employee_id").notNull(),
+  description: text("description").notNull(),
+  plannedOutcome: text("planned_outcome").notNull(),
+  targetDate: timestamp("target_date").notNull(),
+  progress: integer("progress").default(0),
+  status: goalStatusEnum("status").default('not_started'),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("development_goals_evaluation_id_idx").on(table.evaluationId),
+  index("development_goals_employee_id_idx").on(table.employeeId),
+]);
+
+// Development Goals Relations
+export const developmentGoalsRelations = relations(developmentGoals, ({ one }) => ({
+  evaluation: one(evaluations, {
+    fields: [developmentGoals.evaluationId],
+    references: [evaluations.id],
+  }),
+  employee: one(users, {
+    fields: [developmentGoals.employeeId],
+    references: [users.id],
+  }),
+}));
+
+// Insert schema for development goals
+export const insertDevelopmentGoalSchema = createInsertSchema(developmentGoals).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  status: true,
+}).extend({
+  targetDate: z.preprocess((val) => new Date(val as string), z.date()),
+  progress: z.number().min(0).max(100).optional().default(0),
+});
+
+// Update schema for development goals
+export const updateDevelopmentGoalSchema = z.object({
+  description: z.string().min(1).optional(),
+  plannedOutcome: z.string().min(1).optional(),
+  targetDate: z.preprocess((val) => val ? new Date(val as string) : undefined, z.date().optional()),
+  progress: z.number().min(0).max(100).optional(),
+}).strict();
+
+// Export types for development goals
+export type DevelopmentGoal = typeof developmentGoals.$inferSelect;
+export type InsertDevelopmentGoal = z.infer<typeof insertDevelopmentGoalSchema>;
+export type UpdateDevelopmentGoal = z.infer<typeof updateDevelopmentGoalSchema>;

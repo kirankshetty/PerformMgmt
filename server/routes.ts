@@ -26,6 +26,8 @@ import {
   updateUserSchema,
   passwordUpdateSchema,
   sendReminderRequestSchema,
+  insertDevelopmentGoalSchema,
+  updateDevelopmentGoalSchema,
   type SafeUser,
 } from "@shared/schema";
 import { sendEmail, sendReviewInvitation, sendReviewReminder, sendReviewCompletion, generateRegistrationNotificationEmail, sendEmployeeSubmissionNotification } from "./emailService";
@@ -4297,6 +4299,267 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error completing evaluation:", error);
       res.status(500).json({ message: "Failed to complete evaluation" });
+    }
+  });
+
+  // ================== DEVELOPMENT GOALS ROUTES ==================
+
+  // Get all development goals for the authenticated employee
+  app.get('/api/development-goals', isAuthenticated, async (req: any, res) => {
+    try {
+      const employeeId = req.user.claims.sub;
+      const goals = await storage.getDevelopmentGoals(employeeId);
+      
+      // Fetch evaluation details for each goal
+      const goalsWithDetails = await Promise.all(goals.map(async (goal) => {
+        const evaluation = await storage.getEvaluation(goal.evaluationId);
+        let appraisalCycle = null;
+        let frequencyCalendarPeriod = null;
+        
+        if (evaluation?.initiatedAppraisalId) {
+          const initiatedAppraisal = await storage.getInitiatedAppraisal(evaluation.initiatedAppraisalId);
+          if (initiatedAppraisal?.frequencyCalendarId) {
+            const frequencyCalendar = await storage.getFrequencyCalendarById(initiatedAppraisal.frequencyCalendarId);
+            if (frequencyCalendar?.appraisalCycleId) {
+              appraisalCycle = await storage.getAppraisalCycleById(frequencyCalendar.appraisalCycleId);
+            }
+            
+            // Get the frequency calendar period from initiated_appraisal_detail_timings
+            const detailTimings = await storage.getInitiatedAppraisalDetailTimings(evaluation.initiatedAppraisalId);
+            if (detailTimings.length > 0) {
+              const detailTiming = detailTimings[0];
+              const calendarDetails = await storage.getFrequencyCalendarDetailsByCalendarId(initiatedAppraisal.frequencyCalendarId);
+              const matchingDetail = calendarDetails.find(d => d.id === detailTiming.frequencyCalendarDetailId);
+              if (matchingDetail) {
+                frequencyCalendarPeriod = {
+                  displayName: matchingDetail.displayName,
+                  startDate: matchingDetail.startDate,
+                  endDate: matchingDetail.endDate,
+                };
+              }
+            }
+          }
+        }
+        
+        return {
+          ...goal,
+          evaluation: evaluation ? {
+            id: evaluation.id,
+            status: evaluation.status,
+            meetingCompletedAt: evaluation.meetingCompletedAt,
+            overallRating: evaluation.overallRating,
+          } : null,
+          appraisalCycle: appraisalCycle ? {
+            id: appraisalCycle.id,
+            code: appraisalCycle.code,
+            description: appraisalCycle.description,
+          } : null,
+          frequencyCalendarPeriod,
+        };
+      }));
+      
+      res.json(goalsWithDetails);
+    } catch (error) {
+      console.error("Error fetching development goals:", error);
+      res.status(500).json({ message: "Failed to fetch development goals" });
+    }
+  });
+
+  // Get development goals for a specific evaluation
+  app.get('/api/development-goals/evaluation/:evaluationId', isAuthenticated, async (req: any, res) => {
+    try {
+      const { evaluationId } = req.params;
+      const userId = req.user.claims.sub;
+      
+      // Verify the user has access to this evaluation
+      const evaluation = await storage.getEvaluation(evaluationId);
+      if (!evaluation) {
+        return res.status(404).json({ message: "Evaluation not found" });
+      }
+      
+      // Only allow the employee who owns the evaluation to access their goals
+      if (evaluation.employeeId !== userId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const goals = await storage.getDevelopmentGoalsByEvaluation(evaluationId);
+      res.json(goals);
+    } catch (error) {
+      console.error("Error fetching development goals for evaluation:", error);
+      res.status(500).json({ message: "Failed to fetch development goals" });
+    }
+  });
+
+  // Get completed evaluations eligible for development goals
+  // IMPORTANT: This route must come before parameterized routes like /api/development-goals/:id
+  app.get('/api/development-goals/eligible-evaluations', isAuthenticated, async (req: any, res) => {
+    try {
+      const employeeId = req.user.claims.sub;
+      // Get all evaluations for this employee
+      const evaluations = await storage.getEvaluations({ employeeId });
+      
+      // Filter to only completed evaluations (meeting completed)
+      const withMeeting = evaluations.filter(e => e.meetingCompletedAt);
+      
+      const eligibleEvaluations = await Promise.all(
+        withMeeting.map(async (evaluation) => {
+          let appraisalCycle = null;
+          let frequencyCalendarPeriod = null;
+          let isActiveAppraisalCycle = false;
+          
+          if (evaluation.initiatedAppraisalId) {
+            const initiatedAppraisal = await storage.getInitiatedAppraisal(evaluation.initiatedAppraisalId);
+            
+            if (initiatedAppraisal?.frequencyCalendarId) {
+              const frequencyCalendar = await storage.getFrequencyCalendarById(initiatedAppraisal.frequencyCalendarId);
+              
+              if (frequencyCalendar?.appraisalCycleId) {
+                appraisalCycle = await storage.getAppraisalCycleById(frequencyCalendar.appraisalCycleId);
+                isActiveAppraisalCycle = appraisalCycle?.status === 'active';
+              }
+              
+              // Get the frequency calendar period from initiated_appraisal_detail_timings
+              const detailTimings = await storage.getInitiatedAppraisalDetailTimings(evaluation.initiatedAppraisalId!);
+              if (detailTimings.length > 0) {
+                const detailTiming = detailTimings[0];
+                const calendarDetails = await storage.getFrequencyCalendarDetailsByCalendarId(initiatedAppraisal.frequencyCalendarId);
+                const matchingDetail = calendarDetails.find(d => d.id === detailTiming.frequencyCalendarDetailId);
+                if (matchingDetail) {
+                  frequencyCalendarPeriod = {
+                    displayName: matchingDetail.displayName,
+                    startDate: matchingDetail.startDate,
+                    endDate: matchingDetail.endDate,
+                  };
+                }
+              }
+            }
+          }
+          
+          // Get existing goals count for this evaluation
+          const existingGoals = await storage.getDevelopmentGoalsByEvaluation(evaluation.id);
+          
+          return {
+            id: evaluation.id,
+            meetingCompletedAt: evaluation.meetingCompletedAt,
+            overallRating: evaluation.overallRating,
+            appraisalCycle: appraisalCycle ? {
+              id: appraisalCycle.id,
+              code: appraisalCycle.code,
+              description: appraisalCycle.description,
+              status: appraisalCycle.status,
+            } : null,
+            frequencyCalendarPeriod,
+            isActiveAppraisalCycle,
+            goalsCount: existingGoals.length,
+          };
+        })
+      );
+      
+      // Only return evaluations with active appraisal cycles
+      const activeEligibleEvaluations = eligibleEvaluations.filter(e => e.isActiveAppraisalCycle);
+      
+      res.json(activeEligibleEvaluations);
+    } catch (error) {
+      console.error("Error fetching eligible evaluations:", error);
+      res.status(500).json({ message: "Failed to fetch eligible evaluations" });
+    }
+  });
+
+  // Create a new development goal
+  app.post('/api/development-goals', isAuthenticated, async (req: any, res) => {
+    try {
+      const employeeId = req.user.claims.sub;
+      const goalData = insertDevelopmentGoalSchema.parse({
+        ...req.body,
+        employeeId,
+      });
+      
+      // Verify the evaluation exists and belongs to this employee
+      const evaluation = await storage.getEvaluation(goalData.evaluationId);
+      if (!evaluation) {
+        return res.status(404).json({ message: "Evaluation not found" });
+      }
+      if (evaluation.employeeId !== employeeId) {
+        return res.status(403).json({ message: "Access denied: You can only add goals to your own evaluations" });
+      }
+      
+      // Verify the evaluation is completed (meeting completed)
+      if (!evaluation.meetingCompletedAt) {
+        return res.status(400).json({ message: "Development goals can only be added after the evaluation meeting is completed" });
+      }
+      
+      // Verify the appraisal cycle is still active
+      if (evaluation.initiatedAppraisalId) {
+        const initiatedAppraisal = await storage.getInitiatedAppraisal(evaluation.initiatedAppraisalId);
+        if (initiatedAppraisal?.frequencyCalendarId) {
+          const frequencyCalendar = await storage.getFrequencyCalendarById(initiatedAppraisal.frequencyCalendarId);
+          if (frequencyCalendar?.appraisalCycleId) {
+            const appraisalCycle = await storage.getAppraisalCycleById(frequencyCalendar.appraisalCycleId);
+            if (appraisalCycle?.status !== 'active') {
+              return res.status(400).json({ message: "Development goals can only be added for active appraisal cycles" });
+            }
+          }
+        }
+      }
+      
+      const goal = await storage.createDevelopmentGoal(goalData);
+      res.status(201).json(goal);
+    } catch (error) {
+      console.error("Error creating development goal:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to create development goal" });
+    }
+  });
+
+  // Update a development goal
+  app.put('/api/development-goals/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const employeeId = req.user.claims.sub;
+      
+      // Verify the goal exists and belongs to this employee
+      const existingGoal = await storage.getDevelopmentGoal(id);
+      if (!existingGoal) {
+        return res.status(404).json({ message: "Development goal not found" });
+      }
+      if (existingGoal.employeeId !== employeeId) {
+        return res.status(403).json({ message: "Access denied: You can only edit your own goals" });
+      }
+      
+      const updateData = updateDevelopmentGoalSchema.parse(req.body);
+      const updatedGoal = await storage.updateDevelopmentGoal(id, updateData);
+      res.json(updatedGoal);
+    } catch (error) {
+      console.error("Error updating development goal:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to update development goal" });
+    }
+  });
+
+  // Delete a development goal
+  app.delete('/api/development-goals/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const employeeId = req.user.claims.sub;
+      
+      // Verify the goal exists and belongs to this employee
+      const existingGoal = await storage.getDevelopmentGoal(id);
+      if (!existingGoal) {
+        return res.status(404).json({ message: "Development goal not found" });
+      }
+      if (existingGoal.employeeId !== employeeId) {
+        return res.status(403).json({ message: "Access denied: You can only delete your own goals" });
+      }
+      
+      await storage.deleteDevelopmentGoal(id);
+      res.json({ message: "Development goal deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting development goal:", error);
+      res.status(500).json({ message: "Failed to delete development goal" });
     }
   });
 
