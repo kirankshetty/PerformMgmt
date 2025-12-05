@@ -2592,17 +2592,12 @@ export class DatabaseStorage implements IStorage {
     }
     
     const today = new Date();
+    today.setHours(0, 0, 0, 0);
     const target = new Date(targetDate);
-    const totalDays = Math.ceil((target.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+    target.setHours(0, 0, 0, 0);
     
-    // If target date has passed and not completed
+    // Only mark as delayed if target date has passed and goal is not completed
     if (target < today) {
-      return 'delayed';
-    }
-    
-    // Calculate expected progress based on time elapsed
-    // If we're past the target date or significantly behind, mark as delayed
-    if (totalDays < 0 || (totalDays < 30 && progress < 50) || (totalDays < 7 && progress < 80)) {
       return 'delayed';
     }
     
