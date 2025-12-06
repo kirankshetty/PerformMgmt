@@ -551,11 +551,20 @@ export default function ReviewAppraisal() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Details</SelectItem>
-                  {filteredFrequencyCalendarDetails.map((detail: any) => (
-                    <SelectItem key={detail.id} value={detail.id} data-testid={`calendar-detail-option-${detail.id}`}>
-                      {detail.displayName}
-                    </SelectItem>
-                  ))}
+                  {filteredFrequencyCalendarDetails.map((detail: any) => {
+                    const formatDate = (date: Date | string) => {
+                      const d = new Date(date);
+                      return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+                    };
+                    const dateRange = detail.startDate && detail.endDate 
+                      ? ` (${formatDate(detail.startDate)} - ${formatDate(detail.endDate)})`
+                      : '';
+                    return (
+                      <SelectItem key={detail.id} value={detail.id} data-testid={`calendar-detail-option-${detail.id}`}>
+                        {detail.displayName}{dateRange}
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
             </div>
