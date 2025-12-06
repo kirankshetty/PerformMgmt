@@ -1068,7 +1068,6 @@ export class DatabaseStorage implements IStorage {
         appraisalGroup: appraisalGroups,
         frequencyCalendar: frequencyCalendars,
         appraisalCycle: appraisalCycles,
-        frequencyCalendarDetail: frequencyCalendarDetails,
       })
       .from(evaluations)
       .leftJoin(users, eq(evaluations.employeeId, users.id))
@@ -1077,7 +1076,6 @@ export class DatabaseStorage implements IStorage {
       .leftJoin(appraisalGroups, eq(initiatedAppraisals.appraisalGroupId, appraisalGroups.id))
       .leftJoin(frequencyCalendars, eq(initiatedAppraisals.frequencyCalendarId, frequencyCalendars.id))
       .leftJoin(appraisalCycles, eq(frequencyCalendars.appraisalCycleId, appraisalCycles.id))
-      .leftJoin(frequencyCalendarDetails, eq(evaluations.frequencyCalendarDetailId, frequencyCalendarDetails.id))
       .where(
         and(
           eq(users.companyId, companyId),
@@ -1086,14 +1084,29 @@ export class DatabaseStorage implements IStorage {
       )
       .orderBy(desc(evaluations.updatedAt));
     
-    const managerIds = [...new Set(results.map(r => r.evaluation.managerId).filter(Boolean))];
+    const managerIds = Array.from(new Set(results.map(r => r.evaluation.managerId).filter(Boolean)));
     const managers = managerIds.length > 0 
       ? await db.select().from(users).where(inArray(users.id, managerIds as string[]))
       : [];
     const managerMap = new Map(managers.map(m => [m.id, m]));
+
+    const levelIds = Array.from(new Set(results.map(r => r.employee?.levelId).filter(Boolean)));
+    const gradeIds = Array.from(new Set(results.map(r => r.employee?.gradeId).filter(Boolean)));
+    
+    const levelsData = levelIds.length > 0 
+      ? await db.select().from(levels).where(inArray(levels.id, levelIds as string[]))
+      : [];
+    const gradesData = gradeIds.length > 0 
+      ? await db.select().from(grades).where(inArray(grades.id, gradeIds as string[]))
+      : [];
+    
+    const levelMap = new Map(levelsData.map(l => [l.id, l]));
+    const gradeMap = new Map(gradesData.map(g => [g.id, g]));
     
     return results.map(result => {
       const manager = result.evaluation.managerId ? managerMap.get(result.evaluation.managerId) : null;
+      const levelData = result.employee?.levelId ? levelMap.get(result.employee.levelId) : null;
+      const gradeData = result.employee?.gradeId ? gradeMap.get(result.employee.gradeId) : null;
       return {
         id: result.evaluation.id,
         employeeId: result.evaluation.employeeId,
@@ -1103,12 +1116,11 @@ export class DatabaseStorage implements IStorage {
         managerName: manager ? `${manager.firstName} ${manager.lastName}` : 'Unknown',
         locationId: result.employee?.locationId,
         locationName: result.location?.name || 'N/A',
-        departmentId: result.employee?.departmentId || null,
-        departmentName: result.employee?.department || 'N/A',
+        department: result.employee?.department || 'N/A',
         levelId: result.employee?.levelId || null,
-        level: result.employee?.level || 'N/A',
+        level: levelData?.name || 'N/A',
         gradeId: result.employee?.gradeId || null,
-        grade: result.employee?.grade || 'N/A',
+        grade: gradeData?.name || 'N/A',
         appraisalGroupId: result.initiatedAppraisal?.appraisalGroupId,
         appraisalGroupName: result.appraisalGroup?.name || 'N/A',
         frequencyCalendarId: result.initiatedAppraisal?.frequencyCalendarId,
@@ -1117,10 +1129,6 @@ export class DatabaseStorage implements IStorage {
         appraisalCycleId: result.appraisalCycle?.id || null,
         appraisalCycleCode: result.appraisalCycle?.code || 'N/A',
         appraisalCycleDescription: result.appraisalCycle?.description || 'N/A',
-        frequencyCalendarDetailId: result.evaluation.frequencyCalendarDetailId || null,
-        calendarPeriodName: result.frequencyCalendarDetail?.displayName || 'N/A',
-        calendarPeriodStartDate: result.frequencyCalendarDetail?.startDate || null,
-        calendarPeriodEndDate: result.frequencyCalendarDetail?.endDate || null,
         overallRating: result.evaluation.overallRating,
         calibratedRating: result.evaluation.calibratedRating,
         calibrationRemarks: result.evaluation.calibrationRemarks,

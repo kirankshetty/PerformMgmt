@@ -534,7 +534,7 @@ export default function CalibrateRatings() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Department:</span>
-                      <span data-testid={`department-${evaluation.id}`}>{evaluation.departmentName}</span>
+                      <span data-testid={`department-${evaluation.id}`}>{evaluation.department}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Manager:</span>
