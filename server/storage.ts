@@ -1103,10 +1103,50 @@ export class DatabaseStorage implements IStorage {
     const levelMap = new Map(levelsData.map(l => [l.id, l]));
     const gradeMap = new Map(gradesData.map(g => [g.id, g]));
     
+    const initiatedAppraisalIds = Array.from(new Set(results.map(r => r.initiatedAppraisal?.id).filter(Boolean)));
+    
+    const calendarPeriodMap = new Map<string, { name: string; startDate: Date | null; endDate: Date | null }>();
+    
+    if (initiatedAppraisalIds.length > 0) {
+      const detailTimings = await db
+        .select({
+          initiatedAppraisalId: initiatedAppraisalDetailTimings.initiatedAppraisalId,
+          frequencyCalendarDetailId: initiatedAppraisalDetailTimings.frequencyCalendarDetailId,
+        })
+        .from(initiatedAppraisalDetailTimings)
+        .where(inArray(initiatedAppraisalDetailTimings.initiatedAppraisalId, initiatedAppraisalIds as string[]));
+      
+      const frequencyCalendarDetailIds = Array.from(new Set(detailTimings.map(dt => dt.frequencyCalendarDetailId).filter(Boolean)));
+      
+      if (frequencyCalendarDetailIds.length > 0) {
+        const calendarDetails = await db
+          .select()
+          .from(frequencyCalendarDetails)
+          .where(inArray(frequencyCalendarDetails.id, frequencyCalendarDetailIds as string[]));
+        
+        const detailMap = new Map(calendarDetails.map(cd => [cd.id, cd]));
+        
+        for (const dt of detailTimings) {
+          if (dt.initiatedAppraisalId && dt.frequencyCalendarDetailId) {
+            const detail = detailMap.get(dt.frequencyCalendarDetailId);
+            if (detail && !calendarPeriodMap.has(dt.initiatedAppraisalId)) {
+              calendarPeriodMap.set(dt.initiatedAppraisalId, {
+                name: detail.displayName,
+                startDate: detail.startDate,
+                endDate: detail.endDate,
+              });
+            }
+          }
+        }
+      }
+    }
+    
     return results.map(result => {
       const manager = result.evaluation.managerId ? managerMap.get(result.evaluation.managerId) : null;
       const levelData = result.employee?.levelId ? levelMap.get(result.employee.levelId) : null;
       const gradeData = result.employee?.gradeId ? gradeMap.get(result.employee.gradeId) : null;
+      const calendarPeriod = result.initiatedAppraisal?.id ? calendarPeriodMap.get(result.initiatedAppraisal.id) : null;
+      
       return {
         id: result.evaluation.id,
         employeeId: result.evaluation.employeeId,
@@ -1118,9 +1158,9 @@ export class DatabaseStorage implements IStorage {
         locationName: result.location?.name || 'N/A',
         department: result.employee?.department || 'N/A',
         levelId: result.employee?.levelId || null,
-        level: levelData?.name || 'N/A',
+        level: levelData?.code || 'N/A',
         gradeId: result.employee?.gradeId || null,
-        grade: gradeData?.name || 'N/A',
+        grade: gradeData?.code || 'N/A',
         appraisalGroupId: result.initiatedAppraisal?.appraisalGroupId,
         appraisalGroupName: result.appraisalGroup?.name || 'N/A',
         frequencyCalendarId: result.initiatedAppraisal?.frequencyCalendarId,
@@ -1129,6 +1169,9 @@ export class DatabaseStorage implements IStorage {
         appraisalCycleId: result.appraisalCycle?.id || null,
         appraisalCycleCode: result.appraisalCycle?.code || 'N/A',
         appraisalCycleDescription: result.appraisalCycle?.description || 'N/A',
+        calendarPeriodName: calendarPeriod?.name || 'N/A',
+        calendarPeriodStartDate: calendarPeriod?.startDate || null,
+        calendarPeriodEndDate: calendarPeriod?.endDate || null,
         overallRating: result.evaluation.overallRating,
         calibratedRating: result.evaluation.calibratedRating,
         calibrationRemarks: result.evaluation.calibrationRemarks,
