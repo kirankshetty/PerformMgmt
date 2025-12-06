@@ -1063,12 +1063,6 @@ export class DatabaseStorage implements IStorage {
       .select({
         evaluation: evaluations,
         employee: users,
-        manager: {
-          id: sql`manager.id`,
-          firstName: sql`manager.first_name`,
-          lastName: sql`manager.last_name`,
-          email: sql`manager.email`,
-        },
         location: locations,
         initiatedAppraisal: initiatedAppraisals,
         appraisalGroup: appraisalGroups,
@@ -1078,7 +1072,6 @@ export class DatabaseStorage implements IStorage {
       })
       .from(evaluations)
       .leftJoin(users, eq(evaluations.employeeId, users.id))
-      .leftJoin(sql`users as manager`, sql`${evaluations.managerId} = manager.id`)
       .leftJoin(locations, eq(users.locationId, locations.id))
       .leftJoin(initiatedAppraisals, eq(evaluations.initiatedAppraisalId, initiatedAppraisals.id))
       .leftJoin(appraisalGroups, eq(initiatedAppraisals.appraisalGroupId, appraisalGroups.id))
@@ -1093,40 +1086,49 @@ export class DatabaseStorage implements IStorage {
       )
       .orderBy(desc(evaluations.updatedAt));
     
-    return results.map(result => ({
-      id: result.evaluation.id,
-      employeeId: result.evaluation.employeeId,
-      employeeName: result.employee ? `${result.employee.firstName} ${result.employee.lastName}` : 'Unknown',
-      employeeCode: result.employee?.code || 'N/A',
-      managerId: result.evaluation.managerId,
-      managerName: result.manager ? `${result.manager.firstName} ${result.manager.lastName}` : 'Unknown',
-      locationId: result.employee?.locationId,
-      locationName: result.location?.name || 'N/A',
-      departmentId: result.employee?.departmentId || null,
-      departmentName: result.employee?.department || 'N/A',
-      levelId: result.employee?.levelId || null,
-      level: result.employee?.level || 'N/A',
-      gradeId: result.employee?.gradeId || null,
-      grade: result.employee?.grade || 'N/A',
-      appraisalGroupId: result.initiatedAppraisal?.appraisalGroupId,
-      appraisalGroupName: result.appraisalGroup?.name || 'N/A',
-      frequencyCalendarId: result.initiatedAppraisal?.frequencyCalendarId,
-      frequencyCalendarCode: result.frequencyCalendar?.code || 'N/A',
-      frequencyCalendarDescription: result.frequencyCalendar?.description || 'N/A',
-      appraisalCycleId: result.appraisalCycle?.id || null,
-      appraisalCycleCode: result.appraisalCycle?.code || 'N/A',
-      appraisalCycleDescription: result.appraisalCycle?.description || 'N/A',
-      frequencyCalendarDetailId: result.evaluation.frequencyCalendarDetailId || null,
-      calendarPeriodName: result.frequencyCalendarDetail?.displayName || 'N/A',
-      calendarPeriodStartDate: result.frequencyCalendarDetail?.startDate || null,
-      calendarPeriodEndDate: result.frequencyCalendarDetail?.endDate || null,
-      overallRating: result.evaluation.overallRating,
-      calibratedRating: result.evaluation.calibratedRating,
-      calibrationRemarks: result.evaluation.calibrationRemarks,
-      calibratedBy: result.evaluation.calibratedBy,
-      calibratedAt: result.evaluation.calibratedAt,
-      meetingCompletedAt: result.evaluation.meetingCompletedAt,
-    }));
+    const managerIds = [...new Set(results.map(r => r.evaluation.managerId).filter(Boolean))];
+    const managers = managerIds.length > 0 
+      ? await db.select().from(users).where(inArray(users.id, managerIds as string[]))
+      : [];
+    const managerMap = new Map(managers.map(m => [m.id, m]));
+    
+    return results.map(result => {
+      const manager = result.evaluation.managerId ? managerMap.get(result.evaluation.managerId) : null;
+      return {
+        id: result.evaluation.id,
+        employeeId: result.evaluation.employeeId,
+        employeeName: result.employee ? `${result.employee.firstName} ${result.employee.lastName}` : 'Unknown',
+        employeeCode: result.employee?.code || 'N/A',
+        managerId: result.evaluation.managerId,
+        managerName: manager ? `${manager.firstName} ${manager.lastName}` : 'Unknown',
+        locationId: result.employee?.locationId,
+        locationName: result.location?.name || 'N/A',
+        departmentId: result.employee?.departmentId || null,
+        departmentName: result.employee?.department || 'N/A',
+        levelId: result.employee?.levelId || null,
+        level: result.employee?.level || 'N/A',
+        gradeId: result.employee?.gradeId || null,
+        grade: result.employee?.grade || 'N/A',
+        appraisalGroupId: result.initiatedAppraisal?.appraisalGroupId,
+        appraisalGroupName: result.appraisalGroup?.name || 'N/A',
+        frequencyCalendarId: result.initiatedAppraisal?.frequencyCalendarId,
+        frequencyCalendarCode: result.frequencyCalendar?.code || 'N/A',
+        frequencyCalendarDescription: result.frequencyCalendar?.description || 'N/A',
+        appraisalCycleId: result.appraisalCycle?.id || null,
+        appraisalCycleCode: result.appraisalCycle?.code || 'N/A',
+        appraisalCycleDescription: result.appraisalCycle?.description || 'N/A',
+        frequencyCalendarDetailId: result.evaluation.frequencyCalendarDetailId || null,
+        calendarPeriodName: result.frequencyCalendarDetail?.displayName || 'N/A',
+        calendarPeriodStartDate: result.frequencyCalendarDetail?.startDate || null,
+        calendarPeriodEndDate: result.frequencyCalendarDetail?.endDate || null,
+        overallRating: result.evaluation.overallRating,
+        calibratedRating: result.evaluation.calibratedRating,
+        calibrationRemarks: result.evaluation.calibrationRemarks,
+        calibratedBy: result.evaluation.calibratedBy,
+        calibratedAt: result.evaluation.calibratedAt,
+        meetingCompletedAt: result.evaluation.meetingCompletedAt,
+      };
+    });
   }
 
   async getEvaluationById(id: string): Promise<Evaluation | undefined> {
