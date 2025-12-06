@@ -33,6 +33,7 @@ import HRMeetingsView from "@/pages/HRMeetingsView";
 import CalibrateRatings from "@/pages/CalibrateRatings";
 import DevelopmentGoals from "@/pages/DevelopmentGoals";
 import Settings from "@/pages/Settings";
+import SuperAdminLogin from "@/pages/SuperAdminLogin";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -44,6 +45,7 @@ function Router() {
           <Route path="/" component={Landing} />
           <Route path="/dev" component={DevLogin} />
           <Route path="/login" component={Landing} />
+          <Route path="/super-admin" component={SuperAdminLogin} />
           <Route path="/company/:companyUrl" component={Landing} />
         </>
       ) : (

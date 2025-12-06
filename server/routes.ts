@@ -83,6 +83,75 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Super Admin login route (no company required)
+  app.post('/api/login/super-admin', async (req, res) => {
+    try {
+      const { email, password } = req.body;
+      
+      if (!email || !password) {
+        return res.status(400).json({ message: 'Email and password are required.' });
+      }
+      
+      // Find user by email
+      const user = await storage.getUserByEmail(email.toLowerCase());
+      
+      if (!user) {
+        return res.status(401).json({ message: 'Invalid email or password.' });
+      }
+      
+      // Verify user is a super_admin
+      const isSuperAdmin = user.role === 'super_admin' || 
+                           (user.roles || []).includes('super_admin');
+      
+      if (!isSuperAdmin) {
+        return res.status(403).json({ message: 'Access denied. This login is for Super Administrators only.' });
+      }
+      
+      // Verify password
+      if (!user.passwordHash) {
+        return res.status(401).json({ message: 'Password not set for this account. Please contact system administrator.' });
+      }
+      
+      const bcrypt = await import('bcrypt');
+      const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
+      
+      if (!isPasswordValid) {
+        return res.status(401).json({ message: 'Invalid email or password.' });
+      }
+      
+      // Create session
+      const userSession = {
+        claims: {
+          sub: user.id,
+          email: user.email,
+          first_name: user.firstName,
+          last_name: user.lastName,
+          profile_image_url: user.profileImageUrl
+        },
+        access_token: 'super-admin-login-token',
+        refresh_token: 'super-admin-login-refresh',
+        expires_at: Math.floor(Date.now() / 1000) + 86400
+      };
+      
+      req.login(userSession, (err) => {
+        if (err) {
+          console.error('Error establishing session:', err);
+          return res.status(500).json({ message: 'Login failed. Please try again later.' });
+        }
+        
+        const { passwordHash, ...safeUser } = user;
+        res.json({ 
+          message: 'Login successful',
+          user: safeUser
+        });
+      });
+      
+    } catch (error) {
+      console.error('Error in super admin login:', error);
+      res.status(500).json({ message: 'Login failed. Please try again later.' });
+    }
+  });
+
   // Company login route (no authentication required)
   app.post('/api/login/company', async (req, res) => {
     try {
