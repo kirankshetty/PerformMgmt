@@ -510,18 +510,18 @@ export default function CalibrateRatings() {
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Appraisal Cycle:</span>
                       <span data-testid={`appraisal-cycle-${evaluation.id}`} className="text-right font-medium">
-                        {evaluation.appraisalCycleCode !== 'N/A' ? `${evaluation.appraisalCycleCode}` : 'N/A'}
+                        {evaluation.appraisalCycleCode !== 'N/A' ? evaluation.appraisalCycleCode : 'N/A'}
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Calendar Period:</span>
-                      <span data-testid={`calendar-period-${evaluation.id}`} className="text-right">
-                        {evaluation.calendarPeriodName !== 'N/A' ? (
+                      <span className="text-muted-foreground">Frequency Calendar:</span>
+                      <span data-testid={`frequency-calendar-${evaluation.id}`} className="text-right">
+                        {evaluation.frequencyCalendarCode !== 'N/A' ? (
                           <>
-                            {evaluation.calendarPeriodName}
-                            {evaluation.calendarPeriodStartDate && evaluation.calendarPeriodEndDate && (
+                            {evaluation.frequencyCalendarCode}
+                            {evaluation.frequencyCalendarDescription && evaluation.frequencyCalendarDescription !== 'N/A' && (
                               <span className="text-xs text-muted-foreground block">
-                                ({new Date(evaluation.calendarPeriodStartDate).toLocaleDateString('en-GB')} - {new Date(evaluation.calendarPeriodEndDate).toLocaleDateString('en-GB')})
+                                {evaluation.frequencyCalendarDescription}
                               </span>
                             )}
                           </>
@@ -581,7 +581,7 @@ export default function CalibrateRatings() {
                   <TableHead data-testid="table-header-employee">Employee</TableHead>
                   <TableHead data-testid="table-header-code">Code</TableHead>
                   <TableHead data-testid="table-header-cycle">Appraisal Cycle</TableHead>
-                  <TableHead data-testid="table-header-period">Calendar Period</TableHead>
+                  <TableHead data-testid="table-header-frequency-calendar">Frequency Calendar</TableHead>
                   <TableHead data-testid="table-header-location">Location</TableHead>
                   <TableHead data-testid="table-header-manager">Manager</TableHead>
                   <TableHead data-testid="table-header-manager-rating">Manager Rating</TableHead>
@@ -595,11 +595,11 @@ export default function CalibrateRatings() {
                     <TableCell className="font-medium" data-testid={`table-employee-name-${evaluation.id}`}>{evaluation.employeeName}</TableCell>
                     <TableCell data-testid={`table-employee-code-${evaluation.id}`}>{evaluation.employeeCode}</TableCell>
                     <TableCell data-testid={`table-appraisal-cycle-${evaluation.id}`}>{evaluation.appraisalCycleCode}</TableCell>
-                    <TableCell data-testid={`table-calendar-period-${evaluation.id}`}>
-                      {evaluation.calendarPeriodName}
-                      {evaluation.calendarPeriodStartDate && evaluation.calendarPeriodEndDate && (
+                    <TableCell data-testid={`table-frequency-calendar-${evaluation.id}`}>
+                      {evaluation.frequencyCalendarCode}
+                      {evaluation.frequencyCalendarDescription && evaluation.frequencyCalendarDescription !== 'N/A' && (
                         <span className="text-xs text-muted-foreground block">
-                          ({new Date(evaluation.calendarPeriodStartDate).toLocaleDateString('en-GB')} - {new Date(evaluation.calendarPeriodEndDate).toLocaleDateString('en-GB')})
+                          {evaluation.frequencyCalendarDescription}
                         </span>
                       )}
                     </TableCell>
