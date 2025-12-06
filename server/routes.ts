@@ -2076,6 +2076,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const allCalibrationEvaluations = await storage.getEvaluationsForCalibration(requestingUser.companyId);
       
+      console.log('=== IMPORT DEBUG ===');
+      console.log('Total evaluations for calibration:', allCalibrationEvaluations.length);
+      console.log('Available employee codes:', allCalibrationEvaluations.map((e: any) => e.employeeCode));
+      console.log('Import data received:', calibrations);
+      
       const results = {
         successful: 0,
         failed: 0,
@@ -2111,11 +2116,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
             (e: any) => e.employeeCode === trimmedCode
           );
           
+          console.log(`Looking for code "${trimmedCode}", found:`, matchingEvaluation ? matchingEvaluation.id : 'NOT FOUND');
+          
           if (!matchingEvaluation) {
             results.failed++;
             results.errors.push({ employeeCode: trimmedCode, error: 'No completed evaluation found for this employee' });
             continue;
           }
+          
+          console.log(`Updating evaluation ${matchingEvaluation.id} with rating ${rating}`);
           
           await storage.updateEvaluationCalibration(matchingEvaluation.id, {
             calibratedRating: rating,
@@ -2123,6 +2132,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             calibratedBy: requestingUserId,
             calibratedAt: new Date(),
           });
+          
+          console.log(`Successfully updated evaluation ${matchingEvaluation.id}`);
           
           results.successful++;
         } catch (error) {
