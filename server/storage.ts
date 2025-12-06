@@ -1109,7 +1109,7 @@ export class DatabaseStorage implements IStorage {
     
     const initiatedAppraisalIds = Array.from(new Set(results.map(r => r.initiatedAppraisal?.id).filter(Boolean)));
     
-    const calendarPeriodMap = new Map<string, { name: string; startDate: Date | null; endDate: Date | null }>();
+    const calendarPeriodMap = new Map<string, { id: string; name: string; startDate: Date | null; endDate: Date | null }>();
     
     if (initiatedAppraisalIds.length > 0) {
       const detailTimings = await db
@@ -1135,6 +1135,7 @@ export class DatabaseStorage implements IStorage {
             const detail = detailMap.get(dt.frequencyCalendarDetailId);
             if (detail && !calendarPeriodMap.has(dt.initiatedAppraisalId)) {
               calendarPeriodMap.set(dt.initiatedAppraisalId, {
+                id: detail.id,
                 name: detail.displayName,
                 startDate: detail.startDate,
                 endDate: detail.endDate,
@@ -1173,6 +1174,7 @@ export class DatabaseStorage implements IStorage {
         appraisalCycleId: result.appraisalCycle?.id || null,
         appraisalCycleCode: result.appraisalCycle?.code || 'N/A',
         appraisalCycleDescription: result.appraisalCycle?.description || 'N/A',
+        frequencyCalendarDetailId: calendarPeriod?.id || null,
         calendarPeriodName: calendarPeriod?.name || 'N/A',
         calendarPeriodStartDate: calendarPeriod?.startDate || null,
         calendarPeriodEndDate: calendarPeriod?.endDate || null,
