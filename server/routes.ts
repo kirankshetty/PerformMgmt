@@ -2055,6 +2055,98 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Import calibrated ratings from Excel - HR Manager only
+  app.post('/api/evaluations/calibrate/import', isAuthenticated, requireRoles(['hr_manager']), async (req: any, res) => {
+    try {
+      const { calibrations } = req.body;
+      const requestingUserId = req.user.claims.sub;
+      
+      if (!Array.isArray(calibrations) || calibrations.length === 0) {
+        return res.status(400).json({ message: "No calibrations data provided" });
+      }
+      
+      if (calibrations.length > 500) {
+        return res.status(400).json({ message: "Maximum 500 records allowed per import" });
+      }
+      
+      const requestingUser = await storage.getUser(requestingUserId);
+      if (!requestingUser?.companyId) {
+        return res.status(403).json({ message: "User company not found" });
+      }
+      
+      const allCalibrationEvaluations = await storage.getEvaluationsForCalibration(requestingUser.companyId);
+      
+      const results = {
+        successful: 0,
+        failed: 0,
+        errors: [] as Array<{ employeeCode: string; error: string }>,
+      };
+      
+      for (const calibration of calibrations) {
+        try {
+          const { employeeCode, calibratedRating, remarks } = calibration;
+          
+          if (!employeeCode || typeof employeeCode !== 'string') {
+            results.failed++;
+            results.errors.push({ employeeCode: String(employeeCode || 'Unknown'), error: 'Valid employee code is required' });
+            continue;
+          }
+          
+          const trimmedCode = employeeCode.trim();
+          
+          const rating = parseFloat(calibratedRating);
+          if (isNaN(rating)) {
+            results.failed++;
+            results.errors.push({ employeeCode: trimmedCode, error: 'Valid calibrated rating is required (1-5)' });
+            continue;
+          }
+          
+          if (rating < 1 || rating > 5) {
+            results.failed++;
+            results.errors.push({ employeeCode: trimmedCode, error: 'Rating must be between 1 and 5' });
+            continue;
+          }
+          
+          const matchingEvaluation = allCalibrationEvaluations.find(
+            (e: any) => e.employeeCode === trimmedCode
+          );
+          
+          if (!matchingEvaluation) {
+            results.failed++;
+            results.errors.push({ employeeCode: trimmedCode, error: 'No completed evaluation found for this employee' });
+            continue;
+          }
+          
+          await storage.updateEvaluationCalibration(matchingEvaluation.id, {
+            calibratedRating: rating,
+            calibrationRemarks: typeof remarks === 'string' ? remarks.trim() : '',
+            calibratedBy: requestingUserId,
+            calibratedAt: new Date(),
+          });
+          
+          results.successful++;
+        } catch (error) {
+          results.failed++;
+          results.errors.push({ 
+            employeeCode: String(calibration.employeeCode || 'Unknown'), 
+            error: 'Internal error processing this record' 
+          });
+        }
+      }
+      
+      res.json({ 
+        summary: { 
+          successful: results.successful, 
+          failed: results.failed 
+        }, 
+        errors: results.errors 
+      });
+    } catch (error) {
+      console.error("Error importing calibrations:", error);
+      res.status(500).json({ message: "Failed to import calibrations" });
+    }
+  });
+
   // Get evaluations requiring manager review (submitted by employees) - MUST come before /:id route
   app.get('/api/evaluations/manager-submissions', isAuthenticated, requireRoles(['manager']), async (req: any, res) => {
     try {

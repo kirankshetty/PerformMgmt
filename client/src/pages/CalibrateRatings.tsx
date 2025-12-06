@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,14 +25,16 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { Filter, LayoutGrid, LayoutList, Edit, Save, X } from "lucide-react";
+import { Filter, LayoutGrid, LayoutList, Edit, Save, X, Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
+import * as XLSX from "xlsx";
 
 export default function CalibrateRatings() {
   const { toast } = useToast();
@@ -42,6 +44,11 @@ export default function CalibrateRatings() {
   const [editingEvaluation, setEditingEvaluation] = useState<any>(null);
   const [calibratedRating, setCalibratedRating] = useState<number | null>(null);
   const [calibrationRemarks, setCalibrationRemarks] = useState("");
+  
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [importResults, setImportResults] = useState<any>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [filters, setFilters] = useState({
     appraisalGroup: "all",
@@ -162,6 +169,166 @@ export default function CalibrateRatings() {
     });
   };
 
+  const importCalibrationsMutation = useMutation({
+    mutationFn: async (data: any[]) => {
+      const response = await apiRequest("POST", "/api/evaluations/calibrate/import", { calibrations: data });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: "An error occurred" }));
+        throw new Error(errorData.message || "Failed to import calibrations");
+      }
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/evaluations/calibrate"] });
+      setImportResults(data);
+      setSelectedFile(null);
+      toast({
+        title: "Import Completed",
+        description: `Successfully imported ${data.summary.successful} calibrations, ${data.summary.failed} failed`,
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Import Failed",
+        description: error.message || "An error occurred while importing calibrations",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleDownloadTemplate = () => {
+    try {
+      const selectedCycle = filters.appraisalCycle !== "all" 
+        ? (appraisalCycles as any[])?.find((c: any) => c.id === filters.appraisalCycle)
+        : null;
+      const selectedCalendarDetail = filters.frequencyCalendarDetails !== "all"
+        ? (frequencyCalendarDetails as any[])?.find((d: any) => d.id === filters.frequencyCalendarDetails)
+        : null;
+
+      const templateData = filteredEvaluations.map((evaluation: any) => ({
+        "Employee Code": evaluation.employeeCode,
+        "Employee Name": evaluation.employeeName,
+        "Appraisal Cycle": selectedCycle 
+          ? `${selectedCycle.code} - ${selectedCycle.description}` 
+          : evaluation.appraisalCycleCode || 'N/A',
+        "Calendar Period": selectedCalendarDetail 
+          ? selectedCalendarDetail.displayName 
+          : evaluation.calendarPeriodName || 'N/A',
+        "Current Manager Rating": evaluation.overallRating ?? '',
+        "Calibrated Rating": evaluation.calibratedRating ?? '',
+        "Remarks": evaluation.calibrationRemarks || '',
+      }));
+
+      if (templateData.length === 0) {
+        templateData.push({
+          "Employee Code": "",
+          "Employee Name": "",
+          "Appraisal Cycle": selectedCycle ? `${selectedCycle.code} - ${selectedCycle.description}` : "",
+          "Calendar Period": selectedCalendarDetail ? selectedCalendarDetail.displayName : "",
+          "Current Manager Rating": "",
+          "Calibrated Rating": "",
+          "Remarks": "",
+        });
+      }
+
+      const worksheet = XLSX.utils.json_to_sheet(templateData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Calibration Template");
+
+      const columnWidths = [
+        { wch: 15 },
+        { wch: 25 },
+        { wch: 35 },
+        { wch: 20 },
+        { wch: 20 },
+        { wch: 18 },
+        { wch: 40 },
+      ];
+      worksheet['!cols'] = columnWidths;
+
+      const timestamp = format(new Date(), 'yyyy-MM-dd_HHmmss');
+      const filename = `Calibration_Template_${timestamp}.xlsx`;
+      XLSX.writeFile(workbook, filename);
+
+      toast({
+        title: "Template Downloaded",
+        description: `Downloaded template with ${templateData.length} employee records`,
+      });
+    } catch (error) {
+      toast({
+        title: "Download Failed",
+        description: "An error occurred while generating the template",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
+        toast({
+          title: "Invalid File",
+          description: "Please upload an Excel file (.xlsx or .xls)",
+          variant: "destructive",
+        });
+        return;
+      }
+      setSelectedFile(file);
+      setImportResults(null);
+    }
+  };
+
+  const handleImport = () => {
+    if (!selectedFile) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+        const calibrations = jsonData.map((row: any) => ({
+          employeeCode: row['Employee Code']?.toString().trim(),
+          calibratedRating: row['Calibrated Rating'] !== undefined && row['Calibrated Rating'] !== '' 
+            ? parseFloat(row['Calibrated Rating']) 
+            : null,
+          remarks: row['Remarks']?.toString().trim() || '',
+        })).filter((c: any) => c.employeeCode && c.calibratedRating !== null);
+
+        if (calibrations.length === 0) {
+          toast({
+            title: "No Valid Data",
+            description: "No valid calibration data found in the file. Ensure Employee Code and Calibrated Rating are filled.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        importCalibrationsMutation.mutate(calibrations);
+      } catch (error) {
+        toast({
+          title: "Import Failed",
+          description: "Failed to read the Excel file. Please check the file format.",
+          variant: "destructive",
+        });
+      }
+    };
+    reader.readAsArrayBuffer(selectedFile);
+  };
+
+  const handleCloseImportDialog = () => {
+    setImportDialogOpen(false);
+    setSelectedFile(null);
+    setImportResults(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   // Filter evaluations
   const filteredEvaluations = useMemo(() => {
     if (!evaluations) return [];
@@ -246,6 +413,15 @@ export default function CalibrateRatings() {
           <p className="text-muted-foreground">Review and adjust final employee ratings</p>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setImportDialogOpen(true)}
+            data-testid="import-ratings-btn"
+          >
+            <Upload className="h-4 w-4 mr-2" />
+            Import Ratings
+          </Button>
           <Button
             variant={viewMode === "card" ? "default" : "outline"}
             size="sm"
@@ -708,6 +884,119 @@ export default function CalibrateRatings() {
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Import Ratings Dialog */}
+      <Dialog open={importDialogOpen} onOpenChange={(open) => !open && handleCloseImportDialog()}>
+        <DialogContent className="max-w-2xl" data-testid="import-dialog">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileSpreadsheet className="h-5 w-5" />
+              Import Calibrated Ratings
+            </DialogTitle>
+            <DialogDescription>
+              Upload an Excel file to bulk update calibrated ratings. Download the template first to ensure correct format.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-6">
+            <div className="bg-muted/50 p-4 rounded-lg border">
+              <h4 className="font-medium mb-2 flex items-center gap-2">
+                <Download className="h-4 w-4" />
+                Step 1: Download Template
+              </h4>
+              <p className="text-sm text-muted-foreground mb-3">
+                Download the template to get the correct format. If you've selected Appraisal Cycle and Calendar Period filters, 
+                the template will be pre-filled with employees matching those filters.
+              </p>
+              <Button 
+                variant="outline" 
+                onClick={handleDownloadTemplate}
+                data-testid="download-template-btn"
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Download Template
+              </Button>
+            </div>
+
+            <div className="bg-muted/50 p-4 rounded-lg border">
+              <h4 className="font-medium mb-2 flex items-center gap-2">
+                <Upload className="h-4 w-4" />
+                Step 2: Upload Completed File
+              </h4>
+              <p className="text-sm text-muted-foreground mb-3">
+                Fill in the "Calibrated Rating" and "Remarks" columns in the template, then upload the file here.
+              </p>
+              <div className="flex items-center gap-4">
+                <Input
+                  type="file"
+                  accept=".xlsx,.xls"
+                  onChange={handleFileSelect}
+                  ref={fileInputRef}
+                  className="max-w-xs"
+                  data-testid="file-input"
+                />
+                {selectedFile && (
+                  <span className="text-sm text-muted-foreground">
+                    Selected: {selectedFile.name}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {importResults && (
+              <div className="border rounded-lg p-4">
+                <h4 className="font-medium mb-3">Import Results</h4>
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="h-5 w-5 text-green-500" />
+                    <span>Successful: {importResults.summary.successful}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="h-5 w-5 text-red-500" />
+                    <span>Failed: {importResults.summary.failed}</span>
+                  </div>
+                </div>
+                {importResults.errors && importResults.errors.length > 0 && (
+                  <div className="max-h-32 overflow-y-auto">
+                    <p className="text-sm font-medium text-red-600 mb-2">Errors:</p>
+                    <ul className="text-sm space-y-1">
+                      {importResults.errors.map((error: any, index: number) => (
+                        <li key={index} className="text-muted-foreground">
+                          • {error.employeeCode}: {error.error}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button 
+              variant="outline" 
+              onClick={handleCloseImportDialog}
+              data-testid="close-import-btn"
+            >
+              Close
+            </Button>
+            <Button 
+              onClick={handleImport}
+              disabled={!selectedFile || importCalibrationsMutation.isPending}
+              data-testid="import-btn"
+            >
+              {importCalibrationsMutation.isPending ? (
+                <>Processing...</>
+              ) : (
+                <>
+                  <Upload className="h-4 w-4 mr-2" />
+                  Import Ratings
+                </>
+              )}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
