@@ -330,7 +330,7 @@ export default function CalibrateRatings() {
                   <SelectItem value="all">All Calendars</SelectItem>
                   {((frequencyCalendars as any[]) || [])?.map((calendar: any) => (
                     <SelectItem key={calendar.id} value={calendar.id}>
-                      {calendar.name}
+                      {calendar.code} - {calendar.description}
                     </SelectItem>
                   ))}
                 </SelectContent>
