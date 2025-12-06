@@ -206,6 +206,7 @@ export default function CalibrateRatings() {
         : null;
 
       const templateData = filteredEvaluations.map((evaluation: any) => ({
+        "Evaluation ID": evaluation.id,
         "Employee Code": evaluation.employeeCode,
         "Employee Name": evaluation.employeeName,
         "Appraisal Cycle": selectedCycle 
@@ -221,6 +222,7 @@ export default function CalibrateRatings() {
 
       if (templateData.length === 0) {
         templateData.push({
+          "Evaluation ID": "",
           "Employee Code": "",
           "Employee Name": "",
           "Appraisal Cycle": selectedCycle ? `${selectedCycle.code} - ${selectedCycle.description}` : "",
@@ -236,6 +238,7 @@ export default function CalibrateRatings() {
       XLSX.utils.book_append_sheet(workbook, worksheet, "Calibration Template");
 
       const columnWidths = [
+        { wch: 40 },
         { wch: 15 },
         { wch: 25 },
         { wch: 35 },
@@ -292,17 +295,18 @@ export default function CalibrateRatings() {
         const jsonData = XLSX.utils.sheet_to_json(worksheet);
 
         const calibrations = jsonData.map((row: any) => ({
+          evaluationId: row['Evaluation ID']?.toString().trim(),
           employeeCode: row['Employee Code']?.toString().trim(),
           calibratedRating: row['Calibrated Rating'] !== undefined && row['Calibrated Rating'] !== '' 
             ? parseFloat(row['Calibrated Rating']) 
             : null,
           remarks: row['Remarks']?.toString().trim() || '',
-        })).filter((c: any) => c.employeeCode && c.calibratedRating !== null);
+        })).filter((c: any) => c.evaluationId && c.calibratedRating !== null);
 
         if (calibrations.length === 0) {
           toast({
             title: "No Valid Data",
-            description: "No valid calibration data found in the file. Ensure Employee Code and Calibrated Rating are filled.",
+            description: "No valid calibration data found in the file. Ensure Evaluation ID and Calibrated Rating are filled.",
             variant: "destructive",
           });
           return;

@@ -2075,11 +2075,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const allCalibrationEvaluations = await storage.getEvaluationsForCalibration(requestingUser.companyId);
-      
-      console.log('=== IMPORT DEBUG ===');
-      console.log('Total evaluations for calibration:', allCalibrationEvaluations.length);
-      console.log('Available employee codes:', allCalibrationEvaluations.map((e: any) => e.employeeCode));
-      console.log('Import data received:', calibrations);
+      const validEvaluationIds = new Set(allCalibrationEvaluations.map((e: any) => e.id));
       
       const results = {
         successful: 0,
@@ -2089,51 +2085,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       for (const calibration of calibrations) {
         try {
-          const { employeeCode, calibratedRating, remarks } = calibration;
+          const { evaluationId, employeeCode, calibratedRating, remarks } = calibration;
           
-          if (!employeeCode || typeof employeeCode !== 'string') {
+          if (!evaluationId || typeof evaluationId !== 'string') {
             results.failed++;
-            results.errors.push({ employeeCode: String(employeeCode || 'Unknown'), error: 'Valid employee code is required' });
+            results.errors.push({ employeeCode: String(employeeCode || 'Unknown'), error: 'Evaluation ID is required' });
             continue;
           }
           
-          const trimmedCode = employeeCode.trim();
+          const trimmedId = evaluationId.trim();
           
           const rating = parseFloat(calibratedRating);
           if (isNaN(rating)) {
             results.failed++;
-            results.errors.push({ employeeCode: trimmedCode, error: 'Valid calibrated rating is required (1-5)' });
+            results.errors.push({ employeeCode: String(employeeCode || 'Unknown'), error: 'Valid calibrated rating is required (1-5)' });
             continue;
           }
           
           if (rating < 1 || rating > 5) {
             results.failed++;
-            results.errors.push({ employeeCode: trimmedCode, error: 'Rating must be between 1 and 5' });
+            results.errors.push({ employeeCode: String(employeeCode || 'Unknown'), error: 'Rating must be between 1 and 5' });
             continue;
           }
           
-          const matchingEvaluation = allCalibrationEvaluations.find(
-            (e: any) => e.employeeCode === trimmedCode
-          );
-          
-          console.log(`Looking for code "${trimmedCode}", found:`, matchingEvaluation ? matchingEvaluation.id : 'NOT FOUND');
-          
-          if (!matchingEvaluation) {
+          if (!validEvaluationIds.has(trimmedId)) {
             results.failed++;
-            results.errors.push({ employeeCode: trimmedCode, error: 'No completed evaluation found for this employee' });
+            results.errors.push({ employeeCode: String(employeeCode || 'Unknown'), error: 'Evaluation not found or not accessible' });
             continue;
           }
           
-          console.log(`Updating evaluation ${matchingEvaluation.id} with rating ${rating}`);
-          
-          await storage.updateEvaluationCalibration(matchingEvaluation.id, {
+          await storage.updateEvaluationCalibration(trimmedId, {
             calibratedRating: rating,
             calibrationRemarks: typeof remarks === 'string' ? remarks.trim() : '',
             calibratedBy: requestingUserId,
             calibratedAt: new Date(),
           });
-          
-          console.log(`Successfully updated evaluation ${matchingEvaluation.id}`);
           
           results.successful++;
         } catch (error) {
