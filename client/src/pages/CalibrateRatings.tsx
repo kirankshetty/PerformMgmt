@@ -508,6 +508,27 @@ export default function CalibrateRatings() {
                   
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
+                      <span className="text-muted-foreground">Appraisal Cycle:</span>
+                      <span data-testid={`appraisal-cycle-${evaluation.id}`} className="text-right font-medium">
+                        {evaluation.appraisalCycleCode !== 'N/A' ? `${evaluation.appraisalCycleCode}` : 'N/A'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Calendar Period:</span>
+                      <span data-testid={`calendar-period-${evaluation.id}`} className="text-right">
+                        {evaluation.calendarPeriodName !== 'N/A' ? (
+                          <>
+                            {evaluation.calendarPeriodName}
+                            {evaluation.calendarPeriodStartDate && evaluation.calendarPeriodEndDate && (
+                              <span className="text-xs text-muted-foreground block">
+                                ({new Date(evaluation.calendarPeriodStartDate).toLocaleDateString('en-GB')} - {new Date(evaluation.calendarPeriodEndDate).toLocaleDateString('en-GB')})
+                              </span>
+                            )}
+                          </>
+                        ) : 'N/A'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
                       <span className="text-muted-foreground">Location:</span>
                       <span data-testid={`location-${evaluation.id}`}>{evaluation.locationName}</span>
                     </div>
@@ -559,8 +580,9 @@ export default function CalibrateRatings() {
                 <TableRow>
                   <TableHead data-testid="table-header-employee">Employee</TableHead>
                   <TableHead data-testid="table-header-code">Code</TableHead>
+                  <TableHead data-testid="table-header-cycle">Appraisal Cycle</TableHead>
+                  <TableHead data-testid="table-header-period">Calendar Period</TableHead>
                   <TableHead data-testid="table-header-location">Location</TableHead>
-                  <TableHead data-testid="table-header-department">Department</TableHead>
                   <TableHead data-testid="table-header-manager">Manager</TableHead>
                   <TableHead data-testid="table-header-manager-rating">Manager Rating</TableHead>
                   <TableHead data-testid="table-header-calibrated-rating">Calibrated Rating</TableHead>
@@ -572,8 +594,16 @@ export default function CalibrateRatings() {
                   <TableRow key={evaluation.id} data-testid={`evaluation-row-${evaluation.id}`}>
                     <TableCell className="font-medium" data-testid={`table-employee-name-${evaluation.id}`}>{evaluation.employeeName}</TableCell>
                     <TableCell data-testid={`table-employee-code-${evaluation.id}`}>{evaluation.employeeCode}</TableCell>
+                    <TableCell data-testid={`table-appraisal-cycle-${evaluation.id}`}>{evaluation.appraisalCycleCode}</TableCell>
+                    <TableCell data-testid={`table-calendar-period-${evaluation.id}`}>
+                      {evaluation.calendarPeriodName}
+                      {evaluation.calendarPeriodStartDate && evaluation.calendarPeriodEndDate && (
+                        <span className="text-xs text-muted-foreground block">
+                          ({new Date(evaluation.calendarPeriodStartDate).toLocaleDateString('en-GB')} - {new Date(evaluation.calendarPeriodEndDate).toLocaleDateString('en-GB')})
+                        </span>
+                      )}
+                    </TableCell>
                     <TableCell data-testid={`table-location-${evaluation.id}`}>{evaluation.locationName}</TableCell>
-                    <TableCell data-testid={`table-department-${evaluation.id}`}>{evaluation.departmentName}</TableCell>
                     <TableCell data-testid={`table-manager-${evaluation.id}`}>{evaluation.managerName}</TableCell>
                     <TableCell data-testid={`table-manager-rating-${evaluation.id}`}>
                       <Badge variant={getRatingBadgeColor(evaluation.overallRating)}>

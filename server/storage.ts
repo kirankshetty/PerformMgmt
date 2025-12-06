@@ -1073,6 +1073,8 @@ export class DatabaseStorage implements IStorage {
         initiatedAppraisal: initiatedAppraisals,
         appraisalGroup: appraisalGroups,
         frequencyCalendar: frequencyCalendars,
+        appraisalCycle: appraisalCycles,
+        frequencyCalendarDetail: frequencyCalendarDetails,
       })
       .from(evaluations)
       .leftJoin(users, eq(evaluations.employeeId, users.id))
@@ -1081,6 +1083,8 @@ export class DatabaseStorage implements IStorage {
       .leftJoin(initiatedAppraisals, eq(evaluations.initiatedAppraisalId, initiatedAppraisals.id))
       .leftJoin(appraisalGroups, eq(initiatedAppraisals.appraisalGroupId, appraisalGroups.id))
       .leftJoin(frequencyCalendars, eq(initiatedAppraisals.frequencyCalendarId, frequencyCalendars.id))
+      .leftJoin(appraisalCycles, eq(frequencyCalendars.appraisalCycleId, appraisalCycles.id))
+      .leftJoin(frequencyCalendarDetails, eq(evaluations.frequencyCalendarDetailId, frequencyCalendarDetails.id))
       .where(
         and(
           eq(users.companyId, companyId),
@@ -1098,13 +1102,24 @@ export class DatabaseStorage implements IStorage {
       managerName: result.manager ? `${result.manager.firstName} ${result.manager.lastName}` : 'Unknown',
       locationId: result.employee?.locationId,
       locationName: result.location?.name || 'N/A',
-      department: result.employee?.department || 'N/A',
+      departmentId: result.employee?.departmentId || null,
+      departmentName: result.employee?.department || 'N/A',
+      levelId: result.employee?.levelId || null,
       level: result.employee?.level || 'N/A',
+      gradeId: result.employee?.gradeId || null,
       grade: result.employee?.grade || 'N/A',
       appraisalGroupId: result.initiatedAppraisal?.appraisalGroupId,
       appraisalGroupName: result.appraisalGroup?.name || 'N/A',
       frequencyCalendarId: result.initiatedAppraisal?.frequencyCalendarId,
-      frequencyCalendarName: result.frequencyCalendar?.name || 'N/A',
+      frequencyCalendarCode: result.frequencyCalendar?.code || 'N/A',
+      frequencyCalendarDescription: result.frequencyCalendar?.description || 'N/A',
+      appraisalCycleId: result.appraisalCycle?.id || null,
+      appraisalCycleCode: result.appraisalCycle?.code || 'N/A',
+      appraisalCycleDescription: result.appraisalCycle?.description || 'N/A',
+      frequencyCalendarDetailId: result.evaluation.frequencyCalendarDetailId || null,
+      calendarPeriodName: result.frequencyCalendarDetail?.displayName || 'N/A',
+      calendarPeriodStartDate: result.frequencyCalendarDetail?.startDate || null,
+      calendarPeriodEndDate: result.frequencyCalendarDetail?.endDate || null,
       overallRating: result.evaluation.overallRating,
       calibratedRating: result.evaluation.calibratedRating,
       calibrationRemarks: result.evaluation.calibrationRemarks,
