@@ -273,6 +273,7 @@ export interface IStorage {
   createDevelopmentGoal(goal: InsertDevelopmentGoal): Promise<DevelopmentGoal>;
   updateDevelopmentGoal(id: string, goal: UpdateDevelopmentGoal): Promise<DevelopmentGoal>;
   deleteDevelopmentGoal(id: string): Promise<void>;
+  getTeamMemberDevelopmentGoals(managerId: string): Promise<DevelopmentGoal[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2653,6 +2654,25 @@ export class DatabaseStorage implements IStorage {
 
   async deleteDevelopmentGoal(id: string): Promise<void> {
     await db.delete(developmentGoals).where(eq(developmentGoals.id, id));
+  }
+
+  async getTeamMemberDevelopmentGoals(managerId: string): Promise<DevelopmentGoal[]> {
+    const teamMembers = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.managerId, managerId));
+    
+    if (teamMembers.length === 0) {
+      return [];
+    }
+    
+    const teamMemberIds = teamMembers.map(m => m.id);
+    
+    return await db
+      .select()
+      .from(developmentGoals)
+      .where(inArray(developmentGoals.employeeId, teamMemberIds))
+      .orderBy(desc(developmentGoals.createdAt));
   }
 
   // Helper function to calculate goal status based on progress and target date
