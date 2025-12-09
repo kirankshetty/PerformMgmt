@@ -2660,7 +2660,7 @@ export class DatabaseStorage implements IStorage {
     const teamMembers = await db
       .select({ id: users.id })
       .from(users)
-      .where(eq(users.managerId, managerId));
+      .where(eq(users.reportingManagerId, managerId));
     
     if (teamMembers.length === 0) {
       return [];
