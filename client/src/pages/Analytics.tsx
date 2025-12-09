@@ -100,7 +100,20 @@ interface AnalyticsData {
 }
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ffc658'];
-const RATING_COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6'];
+const RATING_COLORS: Record<number, string> = {
+  1: '#ef4444',
+  2: '#f97316',
+  3: '#eab308',
+  4: '#22c55e',
+  5: '#3b82f6',
+};
+const RATING_LABELS: Record<number, string> = {
+  1: 'Needs Improvement',
+  2: 'Below Expectations',
+  3: 'Meets Expectations',
+  4: 'Exceeds Expectations',
+  5: 'Outstanding',
+};
 
 export default function Analytics() {
   const { data, isLoading, error } = useQuery<AnalyticsData>({
@@ -146,12 +159,11 @@ export default function Analytics() {
 
   const { summary, ratingDistribution, cyclePerformance, departmentStats, locationStats, levelStats, gradeStats, managerStats } = data;
 
-  const ratingLabels = ['Needs Improvement', 'Below Expectations', 'Meets Expectations', 'Exceeds Expectations', 'Outstanding'];
-  
-  const pieData = ratingDistribution.map((item, index) => ({
-    name: ratingLabels[index] || `Rating ${item.rating}`,
+  const pieData = ratingDistribution.map((item) => ({
+    name: RATING_LABELS[item.rating] || `Rating ${item.rating}`,
     value: item.count,
     rating: item.rating,
+    color: RATING_COLORS[item.rating] || '#8884d8',
   })).filter(item => item.value > 0);
 
   return (
@@ -346,7 +358,7 @@ export default function Analytics() {
                           dataKey="value"
                         >
                           {pieData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={RATING_COLORS[entry.rating - 1] || COLORS[index % COLORS.length]} />
+                            <Cell key={`cell-${index}`} fill={entry.color} />
                           ))}
                         </Pie>
                         <Tooltip />
@@ -363,19 +375,19 @@ export default function Analytics() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {ratingDistribution.map((item, index) => {
+                  {ratingDistribution.map((item) => {
                     const total = ratingDistribution.reduce((sum, r) => sum + r.count, 0);
                     const percentage = total > 0 ? Math.round((item.count / total) * 100) : 0;
                     return (
                       <div key={item.rating} className="flex items-center gap-4">
-                        <div className="w-32 flex items-center gap-2">
+                        <div className="w-48 flex items-center gap-2">
                           <Badge 
-                            className="w-8 h-8 flex items-center justify-center" 
-                            style={{ backgroundColor: RATING_COLORS[index] }}
+                            className="w-8 h-8 flex items-center justify-center text-white" 
+                            style={{ backgroundColor: RATING_COLORS[item.rating] }}
                           >
                             {item.rating}
                           </Badge>
-                          <span className="text-sm font-medium">{ratingLabels[index]}</span>
+                          <span className="text-sm font-medium">{RATING_LABELS[item.rating]}</span>
                         </div>
                         <div className="flex-1">
                           <Progress value={percentage} className="h-2" />
