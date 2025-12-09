@@ -25,6 +25,7 @@ import {
   Search,
   CalendarCheck,
   Target,
+  BarChart3,
 } from "lucide-react";
 import type { Company } from "@shared/schema";
 
@@ -52,6 +53,7 @@ const navItems: NavItem[] = [
   { href: "/review-appraisal", label: "Review Progress", icon: Search, roles: ["hr_manager"] },
   { href: "/hr-meetings", label: "View Meetings", icon: CalendarCheck, roles: ["hr_manager"] },
   { href: "/calibrate-ratings", label: "Calibrate Ratings", icon: Award, roles: ["hr_manager"] },
+  { href: "/analytics", label: "Analytics", icon: BarChart3, roles: ["hr_manager"] },
   { href: "/questionnaires", label: "Questionnaires", icon: FileText, roles: ["super_admin", "admin", "hr_manager"] },
   { href: "/evaluations", label: "My Evaluations", icon: ClipboardList, roles: ["employee"] },
   { href: "/manager-submissions", label: "Submissions", icon: ClipboardList, roles: ["manager"] },
