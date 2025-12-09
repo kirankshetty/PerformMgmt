@@ -101,11 +101,11 @@ interface AnalyticsData {
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ffc658'];
 const RATING_COLORS: Record<number, string> = {
-  1: '#ef4444',
-  2: '#f97316',
-  3: '#eab308',
-  4: '#22c55e',
-  5: '#3b82f6',
+  1: '#fca5a5',
+  2: '#fdba74',
+  3: '#fde047',
+  4: '#86efac',
+  5: '#93c5fd',
 };
 const RATING_LABELS: Record<number, string> = {
   1: 'Needs Improvement',
