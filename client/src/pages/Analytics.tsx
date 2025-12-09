@@ -349,11 +349,10 @@ export default function Analytics() {
                       <PieChart>
                         <Pie
                           data={pieData}
-                          cx="50%"
+                          cx="35%"
                           cy="50%"
                           labelLine={false}
-                          label={({ name, percent }) => percent > 0 ? `${name}: ${(percent * 100).toFixed(0)}%` : ''}
-                          outerRadius={100}
+                          outerRadius={90}
                           fill="#8884d8"
                           dataKey="value"
                         >
@@ -361,7 +360,18 @@ export default function Analytics() {
                             <Cell key={`cell-${index}`} fill={entry.color} />
                           ))}
                         </Pie>
-                        <Tooltip />
+                        <Tooltip formatter={(value: number) => [`${value} employees`, 'Count']} />
+                        <Legend 
+                          layout="vertical" 
+                          verticalAlign="middle" 
+                          align="right"
+                          formatter={(value: string, entry: any) => {
+                            const item = pieData.find(p => p.name === value);
+                            const total = pieData.reduce((sum, p) => sum + p.value, 0);
+                            const percent = item && total > 0 ? Math.round((item.value / total) * 100) : 0;
+                            return `${value} (${percent}%)`;
+                          }}
+                        />
                       </PieChart>
                     </ResponsiveContainer>
                   </div>
