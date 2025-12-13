@@ -535,9 +535,9 @@ export default function InitiateAppraisal() {
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              <SelectItem value="questionnaire_based">Questionnaire Based</SelectItem>
+                              <SelectItem value="questionnaire_based">SMART Objectives</SelectItem>
                               <SelectItem value="kpi_based">KPI Based</SelectItem>
-                              <SelectItem value="mbo_based">MBO Based</SelectItem>
+                              <SelectItem value="mbo_based">360 Degree Feedback</SelectItem>
                               <SelectItem value="okr_based">OKR Based</SelectItem>
                             </SelectContent>
                           </Select>
