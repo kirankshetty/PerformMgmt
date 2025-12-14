@@ -1033,6 +1033,7 @@ export default function ManagerSubmissions() {
                             >
                               <Checkbox
                                 checked={selectedPeerIds.includes(peer.id)}
+                                onClick={(e) => e.stopPropagation()}
                                 onCheckedChange={(checked) => {
                                   setSelectedPeerIds(prev => 
                                     checked 
@@ -1079,6 +1080,7 @@ export default function ManagerSubmissions() {
                             >
                               <Checkbox
                                 checked={selectedReporteeIds.includes(report.id)}
+                                onClick={(e) => e.stopPropagation()}
                                 onCheckedChange={(checked) => {
                                   setSelectedReporteeIds(prev => 
                                     checked 
