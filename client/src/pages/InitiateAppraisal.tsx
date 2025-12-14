@@ -156,7 +156,7 @@ const initiateAppraisalSchema = z.object({
   makePublic: z.boolean().default(false),
   publishType: z.enum(['now', 'as_per_calendar']).default('now'),
 }).refine((data) => {
-  if (data.appraisalType === 'questionnaire_based') {
+  if (data.appraisalType === 'questionnaire_based' || data.appraisalType === 'mbo_based') {
     return data.questionnaireTemplateIds && data.questionnaireTemplateIds.length > 0;
   }
   if (data.appraisalType === 'kpi_based') {
@@ -549,8 +549,8 @@ export default function InitiateAppraisal() {
                       )}
                     />
 
-                    {/* Questionnaire Template Selection (for questionnaire_based) */}
-                    {appraisalType === 'questionnaire_based' && (
+                    {/* Questionnaire Template Selection (for questionnaire_based and mbo_based/360 feedback) */}
+                    {(appraisalType === 'questionnaire_based' || appraisalType === 'mbo_based') && (
                       <FormField
                         control={form.control}
                         name="questionnaireTemplateIds"
