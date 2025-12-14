@@ -774,3 +774,52 @@ export async function sendManagerSubmissionNotification(
     cc: hrManagerEmails && hrManagerEmails.length > 0 ? hrManagerEmails : undefined,
   });
 }
+
+// Send feedback request email to peer reviewer
+export async function sendFeedbackRequestEmail(
+  reviewerEmail: string,
+  reviewerName: string,
+  subjectName: string,
+  requesterId: string
+): Promise<void> {
+  const requester = await storage.getUser(requesterId);
+  const requesterName = requester ? `${requester.firstName} ${requester.lastName}` : 'Your Manager';
+  
+  const subject = `360 Degree Feedback Request: Please provide feedback for ${subjectName}`;
+  
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+      <h2 style="color: #1e293b;">360 Degree Feedback Request</h2>
+      
+      <p>Dear ${reviewerName},</p>
+      
+      <p>${requesterName} has requested you to provide 360-degree feedback for <strong>${subjectName}</strong> as part of their performance evaluation process.</p>
+      
+      <div style="background-color: #f0fdf4; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #22c55e;">
+        <h3 style="color: #166534; margin-top: 0;">What You Need To Do</h3>
+        <p>Please log in to the Performance Management System and navigate to <strong>Feedback Requests</strong> to submit your feedback.</p>
+        <p>Your feedback will help provide a comprehensive view of ${subjectName}'s performance and development areas.</p>
+      </div>
+      
+      <div style="background-color: #eff6ff; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #2563eb;">
+        <h3 style="color: #1e40af; margin-top: 0;">Guidelines</h3>
+        <ul style="color: #1e293b;">
+          <li>Be honest and constructive in your feedback</li>
+          <li>Focus on specific behaviors and outcomes</li>
+          <li>Consider both strengths and areas for improvement</li>
+          <li>Your feedback will be treated confidentially</li>
+        </ul>
+      </div>
+      
+      <p>Please complete your feedback at your earliest convenience.</p>
+      
+      <p>Best regards,<br>Performance Management System</p>
+    </div>
+  `;
+  
+  return emailService.sendEmail({
+    to: reviewerEmail,
+    subject,
+    html,
+  });
+}

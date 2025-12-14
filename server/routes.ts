@@ -2006,6 +2006,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const employee = await storage.getUser(evaluation.employeeId);
           // Get questionnaire template details from selfEvaluationData
           let questionnaireTemplate = null;
+          let appraisalType = null;
+          
+          // Get appraisal type from initiated appraisal if available
+          if (evaluation.initiatedAppraisalId) {
+            const initiatedAppraisal = await storage.getInitiatedAppraisal(evaluation.initiatedAppraisalId);
+            if (initiatedAppraisal) {
+              appraisalType = initiatedAppraisal.appraisalType;
+            }
+          }
           
           // First try to get from selfEvaluationData.questionnaires array
           if (evaluation.selfEvaluationData?.questionnaires && Array.isArray(evaluation.selfEvaluationData.questionnaires)) {
@@ -2030,6 +2039,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
           }
           
+          // Get employee's direct reports for 360 feedback
+          let directReports: any[] = [];
+          if (appraisalType === 'mbo_based' && employee) {
+            const allUsers = await storage.getUsers({}, managerId);
+            directReports = allUsers.filter(u => u.reportingManagerId === employee.id).map(u => ({
+              id: u.id,
+              firstName: u.firstName,
+              lastName: u.lastName,
+              email: u.email,
+              department: u.department,
+              designation: u.designation
+            }));
+          }
+          
           return {
             ...evaluation,
             employee: employee ? {
@@ -2040,7 +2063,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
               department: employee.department,
               designation: employee.designation
             } : null,
-            questionnaireTemplate
+            questionnaireTemplate,
+            appraisalType,
+            directReports
           };
         })
       );
@@ -4870,6 +4895,112 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       res.status(error.message?.includes('not found') ? 404 : error.message?.includes('authorized') ? 403 : 500)
         .json({ message: error.message || "Failed to submit feedback" });
+    }
+  });
+
+  // Manager: Get all employees for peer selection (360 degree feedback)
+  app.get('/api/feedback-requests/peer-employees', isAuthenticated, requireRoles(['manager']), async (req: any, res) => {
+    try {
+      const managerId = req.user.claims.sub;
+      const allUsers = await storage.getUsers({}, managerId);
+      
+      // Return all active employees with basic details for peer selection
+      const peerEmployees = allUsers
+        .filter(u => u.status === 'active' && u.role !== 'super_admin')
+        .map(u => ({
+          id: u.id,
+          firstName: u.firstName,
+          lastName: u.lastName,
+          email: u.email,
+          code: u.code,
+          department: u.department,
+          designation: u.designation,
+          locationId: u.locationId,
+          levelId: u.levelId,
+          gradeId: u.gradeId,
+        }));
+      
+      res.json(peerEmployees);
+    } catch (error) {
+      console.error("Error fetching peer employees:", error);
+      res.status(500).json({ message: "Failed to fetch employees" });
+    }
+  });
+
+  // Manager: Create feedback requests for team member (360 degree feedback)
+  app.post('/api/feedback-requests/create-for-team-member', isAuthenticated, requireRoles(['manager']), async (req: any, res) => {
+    try {
+      const managerId = req.user.claims.sub;
+      
+      const createFeedbackRequestsSchema = z.object({
+        subjectId: z.string().min(1, "Subject employee ID is required"),
+        evaluationId: z.string().optional(),
+        appraisalCycleId: z.string().optional(),
+        reviewerIds: z.array(z.string()).min(1, "At least one reviewer is required"),
+        externalEmails: z.array(z.string().email()).optional(),
+      });
+      
+      const { subjectId, evaluationId, appraisalCycleId, reviewerIds, externalEmails } = createFeedbackRequestsSchema.parse(req.body);
+      
+      // Verify the subject is in the manager's team
+      const subject = await storage.getUser(subjectId);
+      if (!subject) {
+        return res.status(404).json({ message: "Subject employee not found" });
+      }
+      if (subject.reportingManagerId !== managerId) {
+        return res.status(403).json({ message: "You can only request feedback for your direct reports" });
+      }
+      
+      const createdRequests: any[] = [];
+      const failedRequests: any[] = [];
+      const emailsSent: string[] = [];
+      
+      // Create feedback requests for each reviewer
+      for (const reviewerId of reviewerIds) {
+        try {
+          const feedbackRequest = await storage.createFeedbackRequest({
+            requesterId: managerId,
+            reviewerId,
+            subjectId,
+            evaluationId: evaluationId || null,
+            appraisalCycleId: appraisalCycleId || null,
+          });
+          createdRequests.push(feedbackRequest);
+          
+          // Send email notification to reviewer
+          const reviewer = await storage.getUser(reviewerId);
+          if (reviewer?.email) {
+            try {
+              const { sendFeedbackRequestEmail } = await import('./emailService');
+              await sendFeedbackRequestEmail(
+                reviewer.email,
+                `${reviewer.firstName} ${reviewer.lastName}`,
+                `${subject.firstName} ${subject.lastName}`,
+                managerId
+              );
+              emailsSent.push(reviewer.email);
+            } catch (emailError) {
+              console.error(`Failed to send feedback request email to ${reviewer.email}:`, emailError);
+            }
+          }
+        } catch (createError) {
+          console.error(`Failed to create feedback request for reviewer ${reviewerId}:`, createError);
+          failedRequests.push({ reviewerId, error: (createError as Error).message });
+        }
+      }
+      
+      res.json({
+        message: `Created ${createdRequests.length} feedback request(s)`,
+        createdRequests,
+        failedRequests,
+        emailsSent,
+      });
+    } catch (error: any) {
+      console.error("Error creating feedback requests:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: error.message || "Failed to create feedback requests" });
     }
   });
 

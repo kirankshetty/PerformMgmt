@@ -27,8 +27,15 @@ import {
   AlertCircle,
   Send,
   Plus,
-  FileText
+  FileText,
+  Users,
+  UserPlus,
+  Mail,
+  Search,
+  X
 } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { format, addDays } from 'date-fns';
 
@@ -59,8 +66,23 @@ interface Evaluation {
   finalizedAt: string | null;
   employee: Employee;
   questionnaireTemplate: any;
+  appraisalType: string | null;
+  directReports: Employee[];
   createdAt: string;
   updatedAt: string;
+}
+
+interface PeerEmployee {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  code: string;
+  department: string;
+  designation: string;
+  locationId: string;
+  levelId: string;
+  gradeId: string;
 }
 
 interface Question {
@@ -110,6 +132,16 @@ export default function ManagerSubmissions() {
   });
   const [notesData, setNotesData] = useState<MeetingNotesData>({ meetingNotes: '', showNotesToEmployee: false });
   const [selectedTab, setSelectedTab] = useState<'pending' | 'reviewed' | 'completed'>('pending');
+  
+  // 360 Degree Feedback state
+  const [is360DialogOpen, setIs360DialogOpen] = useState(false);
+  const [selected360Tab, setSelected360Tab] = useState<'peers' | 'reportees' | 'others'>('peers');
+  const [selectedPeerIds, setSelectedPeerIds] = useState<string[]>([]);
+  const [selectedReporteeIds, setSelectedReporteeIds] = useState<string[]>([]);
+  const [externalEmails, setExternalEmails] = useState<string>('');
+  const [peerSearchTerm, setPeerSearchTerm] = useState('');
+  const [confirmationResult, setConfirmationResult] = useState<{success: boolean; emailsSent: string[]} | null>(null);
+  
   const { toast } = useToast();
 
   // Fetch manager submissions
