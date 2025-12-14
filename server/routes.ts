@@ -4745,6 +4745,134 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ============ FEEDBACK REQUEST ROUTES ============
+  
+  // Get feedback requests for the current employee (reviewer)
+  app.get('/api/feedback-requests', isAuthenticated, async (req: any, res) => {
+    try {
+      const reviewerId = req.user.claims.sub;
+      const feedbackRequests = await storage.getFeedbackRequestsForReviewer(reviewerId);
+      
+      // Enrich with subject and requester details
+      const enrichedRequests = await Promise.all(
+        feedbackRequests.map(async (request) => {
+          const subject = await storage.getUser(request.subjectId);
+          const requester = await storage.getUser(request.requesterId);
+          const subjectManager = subject?.reportingManagerId ? await storage.getUser(subject.reportingManagerId) : null;
+          const subjectLocation = subject?.locationId ? await storage.getLocation(subject.locationId) : null;
+          
+          return {
+            ...request,
+            subject: subject ? {
+              id: subject.id,
+              firstName: subject.firstName,
+              lastName: subject.lastName,
+              email: subject.email,
+              department: subject.department,
+              designation: subject.designation,
+              locationName: subjectLocation?.name || null,
+              managerName: subjectManager ? `${subjectManager.firstName} ${subjectManager.lastName}` : null,
+            } : null,
+            requester: requester ? {
+              id: requester.id,
+              firstName: requester.firstName,
+              lastName: requester.lastName,
+              email: requester.email,
+            } : null,
+          };
+        })
+      );
+      
+      res.json(enrichedRequests);
+    } catch (error) {
+      console.error("Error fetching feedback requests:", error);
+      res.status(500).json({ message: "Failed to fetch feedback requests" });
+    }
+  });
+
+  // Get a specific feedback request
+  app.get('/api/feedback-requests/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const reviewerId = req.user.claims.sub;
+      
+      const request = await storage.getFeedbackRequest(id);
+      if (!request) {
+        return res.status(404).json({ message: "Feedback request not found" });
+      }
+      
+      // Verify the current user is the reviewer
+      if (request.reviewerId !== reviewerId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      // Enrich with subject and requester details
+      const subject = await storage.getUser(request.subjectId);
+      const requester = await storage.getUser(request.requesterId);
+      const subjectManager = subject?.reportingManagerId ? await storage.getUser(subject.reportingManagerId) : null;
+      const subjectLocation = subject?.locationId ? await storage.getLocation(subject.locationId) : null;
+      
+      res.json({
+        ...request,
+        subject: subject ? {
+          id: subject.id,
+          firstName: subject.firstName,
+          lastName: subject.lastName,
+          email: subject.email,
+          department: subject.department,
+          designation: subject.designation,
+          locationName: subjectLocation?.name || null,
+          managerName: subjectManager ? `${subjectManager.firstName} ${subjectManager.lastName}` : null,
+        } : null,
+        requester: requester ? {
+          id: requester.id,
+          firstName: requester.firstName,
+          lastName: requester.lastName,
+          email: requester.email,
+        } : null,
+      });
+    } catch (error) {
+      console.error("Error fetching feedback request:", error);
+      res.status(500).json({ message: "Failed to fetch feedback request" });
+    }
+  });
+
+  // Submit feedback for a request
+  app.post('/api/feedback-requests/:id/submit', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const reviewerId = req.user.claims.sub;
+      
+      const submitFeedbackSchema = z.object({
+        relationshipWithPeer: z.string().min(1),
+        collaborationRating: z.enum(['excellent', 'good', 'average', 'needs_improvement', 'poor']),
+        communicationRating: z.enum(['excellent', 'good', 'average', 'needs_improvement', 'poor']),
+        reliabilityRating: z.enum(['excellent', 'good', 'average', 'needs_improvement', 'poor']),
+        problemSolvingRating: z.enum(['excellent', 'good', 'average', 'needs_improvement', 'poor']),
+        ownershipRating: z.enum(['excellent', 'good', 'average', 'needs_improvement', 'poor', 'not_applicable']),
+        opennessToFeedbackRating: z.enum(['excellent', 'good', 'average', 'needs_improvement', 'poor']),
+        conflictHandlingRating: z.enum(['excellent', 'good', 'average', 'needs_improvement', 'poor', 'not_applicable']),
+        jobSpecificCompetencies: z.string().min(1),
+        strengths: z.string().min(1),
+        developmentAreas: z.string().min(1),
+        overallSummary: z.string().min(1),
+        recommendedRating: z.number().min(1).max(5),
+      });
+      
+      const feedback = submitFeedbackSchema.parse(req.body);
+      const updatedRequest = await storage.submitFeedbackRequest(id, reviewerId, feedback);
+      
+      res.json(updatedRequest);
+    } catch (error: any) {
+      console.error("Error submitting feedback:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(error.message?.includes('not found') ? 404 : error.message?.includes('authorized') ? 403 : 500)
+        .json({ message: error.message || "Failed to submit feedback" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

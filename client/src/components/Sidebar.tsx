@@ -25,6 +25,7 @@ import {
   Search,
   CalendarCheck,
   Target,
+  MessageSquare,
 } from "lucide-react";
 import type { Company } from "@shared/schema";
 
@@ -57,6 +58,7 @@ const navItems: NavItem[] = [
   { href: "/manager-submissions", label: "Submissions", icon: ClipboardList, roles: ["manager"] },
   { href: "/meetings", label: "Meetings", icon: Calendar, roles: ["employee", "manager"] },
   { href: "/development-goals", label: "My Development Goals", icon: Target, roles: ["employee"] },
+  { href: "/feedback-requests", label: "Feedback Requests", icon: MessageSquare, roles: ["employee"] },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

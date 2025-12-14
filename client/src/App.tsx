@@ -32,6 +32,8 @@ import Meetings from "@/pages/Meetings";
 import HRMeetingsView from "@/pages/HRMeetingsView";
 import CalibrateRatings from "@/pages/CalibrateRatings";
 import DevelopmentGoals from "@/pages/DevelopmentGoals";
+import FeedbackRequests from "@/pages/FeedbackRequests";
+import FeedbackRequestForm from "@/pages/FeedbackRequestForm";
 import Settings from "@/pages/Settings";
 
 function Router() {
@@ -71,6 +73,8 @@ function Router() {
           <Route path="/manager-submissions" component={ManagerSubmissions} />
           <Route path="/meetings" component={Meetings} />
           <Route path="/development-goals" component={DevelopmentGoals} />
+          <Route path="/feedback-requests" component={FeedbackRequests} />
+          <Route path="/feedback-requests/:id" component={FeedbackRequestForm} />
           <Route path="/hr-meetings" component={HRMeetingsView} />
           <Route path="/calibrate-ratings" component={CalibrateRatings} />
           <Route path="/settings" component={Settings} />
