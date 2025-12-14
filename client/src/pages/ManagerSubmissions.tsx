@@ -657,6 +657,17 @@ export default function ManagerSubmissions() {
                         {/* Action buttons */}
                         <Separator />
                         <div className="flex flex-wrap gap-2">
+                          {selectedTab === 'pending' && evaluation.appraisalType === 'mbo_based' && (
+                            <Button
+                              variant="outline"
+                              onClick={() => open360Dialog(evaluation)}
+                              data-testid={`360-feedback-button-${evaluation.id}`}
+                            >
+                              <Users className="h-4 w-4 mr-2" />
+                              360° Feedback
+                            </Button>
+                          )}
+
                           {selectedTab === 'pending' && (
                             <Button
                               onClick={() => {
@@ -671,17 +682,6 @@ export default function ManagerSubmissions() {
                             >
                               <Star className="h-4 w-4 mr-2" />
                               Review Submission
-                            </Button>
-                          )}
-
-                          {selectedTab === 'pending' && evaluation.appraisalType === 'mbo_based' && (
-                            <Button
-                              variant="outline"
-                              onClick={() => open360Dialog(evaluation)}
-                              data-testid={`360-feedback-button-${evaluation.id}`}
-                            >
-                              <Users className="h-4 w-4 mr-2" />
-                              360° Feedback
                             </Button>
                           )}
 
