@@ -15,7 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { ArrowLeft, User, Mail, Building, MapPin, UserCheck, MessageSquare } from "lucide-react";
 import { Link } from "wouter";
-import RoleGuard from "@/components/RoleGuard";
+import { RoleGuard } from "@/components/RoleGuard";
 
 const feedbackFormSchema = z.object({
   relationshipWithPeer: z.string().min(1, "Please describe your relationship with this person"),

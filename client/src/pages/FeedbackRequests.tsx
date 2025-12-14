@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MessageSquare, Clock, CheckCircle, User, Mail, Building } from "lucide-react";
 import { Link } from "wouter";
-import RoleGuard from "@/components/RoleGuard";
+import { RoleGuard } from "@/components/RoleGuard";
 import { format } from "date-fns";
 
 interface FeedbackRequestWithDetails {
