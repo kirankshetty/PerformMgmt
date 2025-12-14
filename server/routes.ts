@@ -4815,6 +4815,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Manager: Get all employees for peer selection (360 degree feedback)
+  // IMPORTANT: This route must be defined BEFORE /api/feedback-requests/:id to avoid route conflicts
+  app.get('/api/feedback-requests/peer-employees', isAuthenticated, requireRoles(['manager']), async (req: any, res) => {
+    try {
+      const managerId = req.user.claims.sub;
+      const allUsers = await storage.getUsers({}, managerId);
+      
+      // Return all active employees with basic details for peer selection
+      const peerEmployees = allUsers
+        .filter(u => u.status === 'active' && u.role !== 'super_admin')
+        .map(u => ({
+          id: u.id,
+          firstName: u.firstName,
+          lastName: u.lastName,
+          email: u.email,
+          code: u.code,
+          department: u.department,
+          designation: u.designation,
+          locationId: u.locationId,
+          levelId: u.levelId,
+          gradeId: u.gradeId,
+        }));
+      
+      res.json(peerEmployees);
+    } catch (error) {
+      console.error("Error fetching peer employees:", error);
+      res.status(500).json({ message: "Failed to fetch employees" });
+    }
+  });
+
   // Get a specific feedback request
   app.get('/api/feedback-requests/:id', isAuthenticated, async (req: any, res) => {
     try {
@@ -4895,35 +4925,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       res.status(error.message?.includes('not found') ? 404 : error.message?.includes('authorized') ? 403 : 500)
         .json({ message: error.message || "Failed to submit feedback" });
-    }
-  });
-
-  // Manager: Get all employees for peer selection (360 degree feedback)
-  app.get('/api/feedback-requests/peer-employees', isAuthenticated, requireRoles(['manager']), async (req: any, res) => {
-    try {
-      const managerId = req.user.claims.sub;
-      const allUsers = await storage.getUsers({}, managerId);
-      
-      // Return all active employees with basic details for peer selection
-      const peerEmployees = allUsers
-        .filter(u => u.status === 'active' && u.role !== 'super_admin')
-        .map(u => ({
-          id: u.id,
-          firstName: u.firstName,
-          lastName: u.lastName,
-          email: u.email,
-          code: u.code,
-          department: u.department,
-          designation: u.designation,
-          locationId: u.locationId,
-          levelId: u.levelId,
-          gradeId: u.gradeId,
-        }));
-      
-      res.json(peerEmployees);
-    } catch (error) {
-      console.error("Error fetching peer employees:", error);
-      res.status(500).json({ message: "Failed to fetch employees" });
     }
   });
 
