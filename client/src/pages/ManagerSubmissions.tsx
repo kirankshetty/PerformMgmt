@@ -1008,7 +1008,7 @@ export default function ManagerSubmissions() {
                         data-testid="peer-search-input"
                       />
                     </div>
-                    <ScrollArea className="flex-1 border rounded-lg h-[300px]">
+                    <ScrollArea className="border rounded-lg max-h-[350px] overflow-y-auto">
                       <div className="p-2 space-y-1">
                         {filteredPeerEmployees.length === 0 ? (
                           <div className="text-center py-8 text-gray-500">
@@ -1055,7 +1055,7 @@ export default function ManagerSubmissions() {
                   </TabsContent>
 
                   <TabsContent value="reportees" className="flex-1 overflow-hidden flex flex-col mt-4">
-                    <ScrollArea className="flex-1 border rounded-lg h-[300px]">
+                    <ScrollArea className="border rounded-lg max-h-[350px] overflow-y-auto">
                       <div className="p-2 space-y-1">
                         {!selectedEvaluation?.directReports || selectedEvaluation.directReports.length === 0 ? (
                           <div className="text-center py-8 text-gray-500">
