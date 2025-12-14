@@ -1013,7 +1013,8 @@ export const feedbackRequestStatusEnum = pgEnum('feedback_request_status', [
 export const feedbackRequests = pgTable("feedback_requests", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   requesterId: varchar("requester_id").notNull(), // Manager who requested the feedback
-  reviewerId: varchar("reviewer_id").notNull(), // Employee who needs to provide feedback
+  reviewerId: varchar("reviewer_id"), // Employee who needs to provide feedback (null for external reviewers)
+  externalEmail: varchar("external_email"), // Email for external reviewers
   subjectId: varchar("subject_id").notNull(), // Employee being reviewed (the manager's team member)
   evaluationId: varchar("evaluation_id"), // Optional link to evaluation
   appraisalCycleId: varchar("appraisal_cycle_id"),
@@ -1090,6 +1091,9 @@ export const insertFeedbackRequestSchema = createInsertSchema(feedbackRequests).
   developmentAreas: true,
   overallSummary: true,
   recommendedRating: true,
+}).extend({
+  reviewerId: z.string().nullable().optional(),
+  externalEmail: z.string().nullable().optional(),
 });
 
 // Submit feedback schema (employee submits)

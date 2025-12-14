@@ -4937,9 +4937,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         subjectId: z.string().min(1, "Subject employee ID is required"),
         evaluationId: z.string().optional(),
         appraisalCycleId: z.string().optional(),
-        reviewerIds: z.array(z.string()).min(1, "At least one reviewer is required"),
+        reviewerIds: z.array(z.string()).default([]),
         externalEmails: z.array(z.string().email()).optional(),
-      });
+      }).refine(
+        (data) => data.reviewerIds.length > 0 || (data.externalEmails && data.externalEmails.length > 0),
+        { message: "At least one reviewer or external email is required" }
+      );
       
       const { subjectId, evaluationId, appraisalCycleId, reviewerIds, externalEmails } = createFeedbackRequestsSchema.parse(req.body);
       
@@ -4987,6 +4990,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
         } catch (createError) {
           console.error(`Failed to create feedback request for reviewer ${reviewerId}:`, createError);
           failedRequests.push({ reviewerId, error: (createError as Error).message });
+        }
+      }
+      
+      // Handle external email recipients
+      if (externalEmails && externalEmails.length > 0) {
+        for (const externalEmail of externalEmails) {
+          try {
+            // Create a feedback request for external reviewer (with null reviewerId)
+            const feedbackRequest = await storage.createFeedbackRequest({
+              requesterId: managerId,
+              reviewerId: null,
+              subjectId,
+              evaluationId: evaluationId || null,
+              appraisalCycleId: appraisalCycleId || null,
+              externalEmail,
+            });
+            createdRequests.push(feedbackRequest);
+            
+            // Send email notification to external reviewer
+            try {
+              const { sendFeedbackRequestEmail } = await import('./emailService');
+              await sendFeedbackRequestEmail(
+                externalEmail,
+                externalEmail.split('@')[0], // Use email prefix as name
+                `${subject.firstName} ${subject.lastName}`,
+                managerId
+              );
+              emailsSent.push(externalEmail);
+            } catch (emailError) {
+              console.error(`Failed to send feedback request email to ${externalEmail}:`, emailError);
+            }
+          } catch (createError) {
+            console.error(`Failed to create feedback request for external ${externalEmail}:`, createError);
+            failedRequests.push({ externalEmail, error: (createError as Error).message });
+          }
         }
       }
       

@@ -251,7 +251,7 @@ export default function ManagerSubmissions() {
 
   // 360 Feedback - create feedback requests mutation
   const createFeedbackRequestsMutation = useMutation({
-    mutationFn: async (data: { evaluationId: string; peerIds: string[]; reporteeIds: string[]; externalEmails: string[] }) => {
+    mutationFn: async (data: { subjectId: string; evaluationId: string; reviewerIds: string[]; externalEmails: string[] }) => {
       const response = await apiRequest('POST', '/api/feedback-requests/create-for-team-member', data);
       return response.json();
     },
@@ -305,10 +305,13 @@ export default function ManagerSubmissions() {
       return;
     }
     
+    // Combine peer and reportee IDs into a single reviewerIds array
+    const allReviewerIds = [...selectedPeerIds, ...selectedReporteeIds];
+    
     createFeedbackRequestsMutation.mutate({
+      subjectId: selectedEvaluation.employeeId,
       evaluationId: selectedEvaluation.id,
-      peerIds: selectedPeerIds,
-      reporteeIds: selectedReporteeIds,
+      reviewerIds: allReviewerIds,
       externalEmails: externalEmailList,
     });
   };
