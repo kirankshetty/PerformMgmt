@@ -3581,8 +3581,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "At least one questionnaire template is required for questionnaire-based appraisals" });
       }
 
-      if ((validatedData.appraisalType === 'kpi_based' || validatedData.appraisalType === 'mbo_based') && !validatedData.documentUrl) {
-        return res.status(400).json({ message: "Document is required for KPI/MBO-based appraisals" });
+      if (validatedData.appraisalType === 'kpi_based' && !validatedData.documentUrl) {
+        return res.status(400).json({ message: "Document is required for KPI-based appraisals" });
       }
 
       // Create the initiated appraisal
