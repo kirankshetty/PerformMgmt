@@ -24,6 +24,7 @@ import {
   initiatedAppraisalDetailTimings,
   scheduledAppraisalTasks,
   developmentGoals,
+  feedbackRequests,
   type User,
   type SafeUser,
   type UpsertUser,
@@ -77,6 +78,9 @@ import {
   type DevelopmentGoal,
   type InsertDevelopmentGoal,
   type UpdateDevelopmentGoal,
+  type FeedbackRequest,
+  type InsertFeedbackRequest,
+  type SubmitFeedback,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, asc, like, inArray, or, sql, isNotNull } from "drizzle-orm";
@@ -273,6 +277,12 @@ export interface IStorage {
   createDevelopmentGoal(goal: InsertDevelopmentGoal): Promise<DevelopmentGoal>;
   updateDevelopmentGoal(id: string, goal: UpdateDevelopmentGoal): Promise<DevelopmentGoal>;
   deleteDevelopmentGoal(id: string): Promise<void>;
+  
+  // Feedback Request operations
+  getFeedbackRequestsForReviewer(reviewerId: string): Promise<FeedbackRequest[]>;
+  getFeedbackRequest(id: string): Promise<FeedbackRequest | undefined>;
+  createFeedbackRequest(request: InsertFeedbackRequest): Promise<FeedbackRequest>;
+  submitFeedbackRequest(id: string, reviewerId: string, feedback: SubmitFeedback): Promise<FeedbackRequest>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2607,6 +2617,57 @@ export class DatabaseStorage implements IStorage {
     }
     
     return 'on_track';
+  }
+
+  // Feedback Request operations
+  async getFeedbackRequestsForReviewer(reviewerId: string): Promise<FeedbackRequest[]> {
+    return await db
+      .select()
+      .from(feedbackRequests)
+      .where(eq(feedbackRequests.reviewerId, reviewerId))
+      .orderBy(desc(feedbackRequests.createdAt));
+  }
+
+  async getFeedbackRequest(id: string): Promise<FeedbackRequest | undefined> {
+    const [request] = await db
+      .select()
+      .from(feedbackRequests)
+      .where(eq(feedbackRequests.id, id));
+    return request;
+  }
+
+  async createFeedbackRequest(request: InsertFeedbackRequest): Promise<FeedbackRequest> {
+    const [created] = await db
+      .insert(feedbackRequests)
+      .values(request)
+      .returning();
+    return created;
+  }
+
+  async submitFeedbackRequest(id: string, reviewerId: string, feedback: SubmitFeedback): Promise<FeedbackRequest> {
+    // First verify the request exists and belongs to this reviewer
+    const existingRequest = await this.getFeedbackRequest(id);
+    if (!existingRequest) {
+      throw new Error('Feedback request not found');
+    }
+    if (existingRequest.reviewerId !== reviewerId) {
+      throw new Error('You are not authorized to submit this feedback');
+    }
+    if (existingRequest.status === 'submitted') {
+      throw new Error('This feedback has already been submitted');
+    }
+
+    const [updated] = await db
+      .update(feedbackRequests)
+      .set({
+        ...feedback,
+        status: 'submitted',
+        submittedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(feedbackRequests.id, id))
+      .returning();
+    return updated;
   }
 }
 
