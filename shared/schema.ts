@@ -991,3 +991,125 @@ export const updateDevelopmentGoalSchema = z.object({
 export type DevelopmentGoal = typeof developmentGoals.$inferSelect;
 export type InsertDevelopmentGoal = z.infer<typeof insertDevelopmentGoalSchema>;
 export type UpdateDevelopmentGoal = z.infer<typeof updateDevelopmentGoalSchema>;
+
+// Feedback rating enum
+export const feedbackRatingEnum = pgEnum('feedback_rating', [
+  'excellent',
+  'good',
+  'average',
+  'needs_improvement',
+  'poor',
+  'not_applicable'
+]);
+
+// Feedback request status enum
+export const feedbackRequestStatusEnum = pgEnum('feedback_request_status', [
+  'pending',
+  'submitted',
+  'cancelled'
+]);
+
+// Feedback Requests table - 360 degree feedback requests sent to employees
+export const feedbackRequests = pgTable("feedback_requests", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  requesterId: varchar("requester_id").notNull(), // Manager who requested the feedback
+  reviewerId: varchar("reviewer_id").notNull(), // Employee who needs to provide feedback
+  subjectId: varchar("subject_id").notNull(), // Employee being reviewed (the manager's team member)
+  evaluationId: varchar("evaluation_id"), // Optional link to evaluation
+  appraisalCycleId: varchar("appraisal_cycle_id"),
+  status: feedbackRequestStatusEnum("status").default('pending'),
+  // Feedback response fields (filled when submitted)
+  relationshipWithPeer: text("relationship_with_peer"),
+  collaborationRating: feedbackRatingEnum("collaboration_rating"),
+  communicationRating: feedbackRatingEnum("communication_rating"),
+  reliabilityRating: feedbackRatingEnum("reliability_rating"),
+  problemSolvingRating: feedbackRatingEnum("problem_solving_rating"),
+  ownershipRating: feedbackRatingEnum("ownership_rating"),
+  opennessToFeedbackRating: feedbackRatingEnum("openness_to_feedback_rating"),
+  conflictHandlingRating: feedbackRatingEnum("conflict_handling_rating"),
+  jobSpecificCompetencies: text("job_specific_competencies"),
+  strengths: text("strengths"),
+  developmentAreas: text("development_areas"),
+  overallSummary: text("overall_summary"),
+  recommendedRating: integer("recommended_rating"), // 1-5
+  submittedAt: timestamp("submitted_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("feedback_requests_requester_id_idx").on(table.requesterId),
+  index("feedback_requests_reviewer_id_idx").on(table.reviewerId),
+  index("feedback_requests_subject_id_idx").on(table.subjectId),
+  index("feedback_requests_status_idx").on(table.status),
+]);
+
+// Feedback Requests Relations
+export const feedbackRequestsRelations = relations(feedbackRequests, ({ one }) => ({
+  requester: one(users, {
+    fields: [feedbackRequests.requesterId],
+    references: [users.id],
+    relationName: "feedbackRequester",
+  }),
+  reviewer: one(users, {
+    fields: [feedbackRequests.reviewerId],
+    references: [users.id],
+    relationName: "feedbackReviewer",
+  }),
+  subject: one(users, {
+    fields: [feedbackRequests.subjectId],
+    references: [users.id],
+    relationName: "feedbackSubject",
+  }),
+  evaluation: one(evaluations, {
+    fields: [feedbackRequests.evaluationId],
+    references: [evaluations.id],
+  }),
+  appraisalCycle: one(appraisalCycles, {
+    fields: [feedbackRequests.appraisalCycleId],
+    references: [appraisalCycles.id],
+  }),
+}));
+
+// Insert schema for creating feedback requests (manager creates)
+export const insertFeedbackRequestSchema = createInsertSchema(feedbackRequests).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  submittedAt: true,
+  status: true,
+  // Omit response fields - they're filled on submission
+  relationshipWithPeer: true,
+  collaborationRating: true,
+  communicationRating: true,
+  reliabilityRating: true,
+  problemSolvingRating: true,
+  ownershipRating: true,
+  opennessToFeedbackRating: true,
+  conflictHandlingRating: true,
+  jobSpecificCompetencies: true,
+  strengths: true,
+  developmentAreas: true,
+  overallSummary: true,
+  recommendedRating: true,
+});
+
+// Submit feedback schema (employee submits)
+export const submitFeedbackSchema = z.object({
+  relationshipWithPeer: z.string().min(1, "Relationship with peer is required"),
+  collaborationRating: z.enum(['excellent', 'good', 'average', 'needs_improvement', 'poor']),
+  communicationRating: z.enum(['excellent', 'good', 'average', 'needs_improvement', 'poor']),
+  reliabilityRating: z.enum(['excellent', 'good', 'average', 'needs_improvement', 'poor']),
+  problemSolvingRating: z.enum(['excellent', 'good', 'average', 'needs_improvement', 'poor']),
+  ownershipRating: z.enum(['excellent', 'good', 'average', 'needs_improvement', 'poor', 'not_applicable']),
+  opennessToFeedbackRating: z.enum(['excellent', 'good', 'average', 'needs_improvement', 'poor']),
+  conflictHandlingRating: z.enum(['excellent', 'good', 'average', 'needs_improvement', 'poor', 'not_applicable']),
+  jobSpecificCompetencies: z.string().min(1, "Job specific competencies is required"),
+  strengths: z.string().min(1, "Strengths is required"),
+  developmentAreas: z.string().min(1, "Development areas is required"),
+  overallSummary: z.string().min(1, "Overall summary is required"),
+  recommendedRating: z.number().min(1).max(5),
+});
+
+// Export types
+export type FeedbackRequest = typeof feedbackRequests.$inferSelect;
+export type InsertFeedbackRequest = z.infer<typeof insertFeedbackRequestSchema>;
+export type SubmitFeedback = z.infer<typeof submitFeedbackSchema>;
