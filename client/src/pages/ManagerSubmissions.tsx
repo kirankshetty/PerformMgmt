@@ -243,6 +243,90 @@ export default function ManagerSubmissions() {
     },
   });
 
+  // 360 Feedback - fetch peer employees when dialog is open
+  const { data: peerEmployees = [] } = useQuery<PeerEmployee[]>({
+    queryKey: ['/api/feedback-requests/peer-employees'],
+    enabled: is360DialogOpen,
+  });
+
+  // 360 Feedback - create feedback requests mutation
+  const createFeedbackRequestsMutation = useMutation({
+    mutationFn: async (data: { evaluationId: string; peerIds: string[]; reporteeIds: string[]; externalEmails: string[] }) => {
+      const response = await apiRequest('POST', '/api/feedback-requests/create-for-team-member', data);
+      return response.json();
+    },
+    onSuccess: (data) => {
+      setConfirmationResult({ success: true, emailsSent: data.emailsSent || [] });
+      setSelectedPeerIds([]);
+      setSelectedReporteeIds([]);
+      setExternalEmails('');
+      queryClient.invalidateQueries({ queryKey: ['/api/evaluations/manager-submissions'] });
+      toast({
+        title: "Feedback Requests Sent",
+        description: `Feedback requests have been sent to ${data.emailsSent?.length || 0} recipients.`,
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to send feedback requests",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Open 360 dialog for a specific evaluation
+  const open360Dialog = (evaluation: Evaluation) => {
+    setSelectedEvaluation(evaluation);
+    setIs360DialogOpen(true);
+    setSelected360Tab('peers');
+    setSelectedPeerIds([]);
+    setSelectedReporteeIds([]);
+    setExternalEmails('');
+    setPeerSearchTerm('');
+    setConfirmationResult(null);
+  };
+
+  // Handle sending 360 feedback requests
+  const handleSend360Requests = () => {
+    if (!selectedEvaluation) return;
+    
+    const externalEmailList = externalEmails
+      .split(/[,;\n]/)
+      .map(e => e.trim())
+      .filter(e => e && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e));
+    
+    if (selectedPeerIds.length === 0 && selectedReporteeIds.length === 0 && externalEmailList.length === 0) {
+      toast({
+        title: "No Recipients",
+        description: "Please select at least one peer, reportee, or enter an external email.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    createFeedbackRequestsMutation.mutate({
+      evaluationId: selectedEvaluation.id,
+      peerIds: selectedPeerIds,
+      reporteeIds: selectedReporteeIds,
+      externalEmails: externalEmailList,
+    });
+  };
+
+  // Filter peer employees based on search term, excluding the subject employee
+  const filteredPeerEmployees = peerEmployees.filter(peer => {
+    if (selectedEvaluation && peer.id === selectedEvaluation.employeeId) return false;
+    if (!peerSearchTerm) return true;
+    const searchLower = peerSearchTerm.toLowerCase();
+    return (
+      peer.firstName.toLowerCase().includes(searchLower) ||
+      peer.lastName.toLowerCase().includes(searchLower) ||
+      peer.email.toLowerCase().includes(searchLower) ||
+      peer.department?.toLowerCase().includes(searchLower) ||
+      peer.designation?.toLowerCase().includes(searchLower)
+    );
+  });
+
   // Filter evaluations based on selected tab
   const filteredEvaluations = evaluations.filter(evaluation => {
     if (selectedTab === 'pending') {
@@ -590,6 +674,17 @@ export default function ManagerSubmissions() {
                             </Button>
                           )}
 
+                          {selectedTab === 'pending' && evaluation.appraisalType === 'mbo_based' && (
+                            <Button
+                              variant="outline"
+                              onClick={() => open360Dialog(evaluation)}
+                              data-testid={`360-feedback-button-${evaluation.id}`}
+                            >
+                              <Users className="h-4 w-4 mr-2" />
+                              360° Feedback
+                            </Button>
+                          )}
+
                           {canScheduleMeeting(evaluation) && (
                             <Button
                               variant="outline"
@@ -840,6 +935,210 @@ export default function ManagerSubmissions() {
                 Save Notes
               </Button>
             </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* 360 Degree Feedback Dialog */}
+        <Dialog open={is360DialogOpen} onOpenChange={(open) => {
+          setIs360DialogOpen(open);
+          if (!open) {
+            setConfirmationResult(null);
+          }
+        }}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5" />
+                360° Feedback Request
+              </DialogTitle>
+              <DialogDescription>
+                Request feedback for {selectedEvaluation?.employee?.firstName} {selectedEvaluation?.employee?.lastName} from peers, direct reports, or external contacts.
+              </DialogDescription>
+            </DialogHeader>
+
+            {confirmationResult ? (
+              <div className="space-y-4 py-4">
+                <div className="flex items-center gap-2 text-green-600">
+                  <CheckCircle className="h-5 w-5" />
+                  <span className="font-medium">Feedback requests sent successfully!</span>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <h4 className="font-medium mb-2">Emails sent to:</h4>
+                  <ul className="space-y-1">
+                    {confirmationResult.emailsSent.map((email, idx) => (
+                      <li key={idx} className="flex items-center gap-2 text-sm">
+                        <Mail className="h-4 w-4 text-gray-500" />
+                        {email}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <DialogFooter>
+                  <Button onClick={() => setIs360DialogOpen(false)}>
+                    Done
+                  </Button>
+                </DialogFooter>
+              </div>
+            ) : (
+              <>
+                <Tabs value={selected360Tab} onValueChange={(v) => setSelected360Tab(v as typeof selected360Tab)} className="flex-1 overflow-hidden flex flex-col">
+                  <TabsList className="grid w-full grid-cols-3">
+                    <TabsTrigger value="peers" data-testid="360-tab-peers">
+                      <UserPlus className="h-4 w-4 mr-1" />
+                      Peers ({selectedPeerIds.length})
+                    </TabsTrigger>
+                    <TabsTrigger value="reportees" data-testid="360-tab-reportees">
+                      <Users className="h-4 w-4 mr-1" />
+                      Reportees ({selectedReporteeIds.length})
+                    </TabsTrigger>
+                    <TabsTrigger value="others" data-testid="360-tab-others">
+                      <Mail className="h-4 w-4 mr-1" />
+                      Others
+                    </TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="peers" className="flex-1 overflow-hidden flex flex-col mt-4">
+                    <div className="relative mb-3">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                      <Input
+                        placeholder="Search peers by name, email, department..."
+                        value={peerSearchTerm}
+                        onChange={(e) => setPeerSearchTerm(e.target.value)}
+                        className="pl-10"
+                        data-testid="peer-search-input"
+                      />
+                    </div>
+                    <ScrollArea className="flex-1 border rounded-lg h-[300px]">
+                      <div className="p-2 space-y-1">
+                        {filteredPeerEmployees.length === 0 ? (
+                          <div className="text-center py-8 text-gray-500">
+                            No peers found
+                          </div>
+                        ) : (
+                          filteredPeerEmployees.map((peer) => (
+                            <div
+                              key={peer.id}
+                              className={cn(
+                                "flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors",
+                                selectedPeerIds.includes(peer.id) ? "bg-primary/10 border border-primary/30" : "hover:bg-gray-50"
+                              )}
+                              onClick={() => {
+                                setSelectedPeerIds(prev => 
+                                  prev.includes(peer.id) 
+                                    ? prev.filter(id => id !== peer.id)
+                                    : [...prev, peer.id]
+                                );
+                              }}
+                              data-testid={`peer-item-${peer.id}`}
+                            >
+                              <Checkbox
+                                checked={selectedPeerIds.includes(peer.id)}
+                                onCheckedChange={(checked) => {
+                                  setSelectedPeerIds(prev => 
+                                    checked 
+                                      ? [...prev, peer.id]
+                                      : prev.filter(id => id !== peer.id)
+                                  );
+                                }}
+                              />
+                              <div className="flex-1">
+                                <p className="font-medium">{peer.firstName} {peer.lastName}</p>
+                                <p className="text-sm text-gray-500">{peer.email}</p>
+                                <p className="text-xs text-gray-400">{peer.designation} • {peer.department}</p>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </ScrollArea>
+                  </TabsContent>
+
+                  <TabsContent value="reportees" className="flex-1 overflow-hidden flex flex-col mt-4">
+                    <ScrollArea className="flex-1 border rounded-lg h-[300px]">
+                      <div className="p-2 space-y-1">
+                        {!selectedEvaluation?.directReports || selectedEvaluation.directReports.length === 0 ? (
+                          <div className="text-center py-8 text-gray-500">
+                            No direct reports found for this employee
+                          </div>
+                        ) : (
+                          selectedEvaluation.directReports.map((report) => (
+                            <div
+                              key={report.id}
+                              className={cn(
+                                "flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors",
+                                selectedReporteeIds.includes(report.id) ? "bg-primary/10 border border-primary/30" : "hover:bg-gray-50"
+                              )}
+                              onClick={() => {
+                                setSelectedReporteeIds(prev => 
+                                  prev.includes(report.id) 
+                                    ? prev.filter(id => id !== report.id)
+                                    : [...prev, report.id]
+                                );
+                              }}
+                              data-testid={`reportee-item-${report.id}`}
+                            >
+                              <Checkbox
+                                checked={selectedReporteeIds.includes(report.id)}
+                                onCheckedChange={(checked) => {
+                                  setSelectedReporteeIds(prev => 
+                                    checked 
+                                      ? [...prev, report.id]
+                                      : prev.filter(id => id !== report.id)
+                                  );
+                                }}
+                              />
+                              <div className="flex-1">
+                                <p className="font-medium">{report.firstName} {report.lastName}</p>
+                                <p className="text-sm text-gray-500">{report.email}</p>
+                                <p className="text-xs text-gray-400">{report.designation} • {report.department}</p>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </ScrollArea>
+                  </TabsContent>
+
+                  <TabsContent value="others" className="flex-1 flex flex-col mt-4">
+                    <div className="space-y-3">
+                      <Label>External Email Addresses</Label>
+                      <Textarea
+                        placeholder="Enter email addresses separated by commas, semicolons, or new lines.&#10;&#10;Example:&#10;john@external.com, jane@partner.org&#10;client@company.com"
+                        value={externalEmails}
+                        onChange={(e) => setExternalEmails(e.target.value)}
+                        rows={6}
+                        className="resize-none"
+                        data-testid="external-emails-input"
+                      />
+                      <p className="text-xs text-gray-500">
+                        These external contacts will receive an email requesting feedback for {selectedEvaluation?.employee?.firstName}.
+                      </p>
+                    </div>
+                  </TabsContent>
+                </Tabs>
+
+                <DialogFooter className="mt-4 pt-4 border-t">
+                  <div className="flex items-center justify-between w-full">
+                    <div className="text-sm text-gray-500">
+                      {selectedPeerIds.length + selectedReporteeIds.length + (externalEmails.split(/[,;\n]/).filter(e => e.trim()).length)} recipient(s) selected
+                    </div>
+                    <div className="flex gap-2">
+                      <Button variant="outline" onClick={() => setIs360DialogOpen(false)}>
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={handleSend360Requests}
+                        disabled={createFeedbackRequestsMutation.isPending}
+                        data-testid="send-360-requests-button"
+                      >
+                        <Send className="h-4 w-4 mr-2" />
+                        {createFeedbackRequestsMutation.isPending ? 'Sending...' : 'Send Requests'}
+                      </Button>
+                    </div>
+                  </div>
+                </DialogFooter>
+              </>
+            )}
           </DialogContent>
         </Dialog>
       </div>
