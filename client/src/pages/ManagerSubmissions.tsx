@@ -1052,7 +1052,7 @@ export default function ManagerSubmissions() {
                               key={request.id}
                               className={cn(
                                 "p-4 rounded-lg border",
-                                request.status === 'completed' ? "bg-green-50 border-green-200" : "bg-gray-50 border-gray-200"
+                                request.status === 'submitted' ? "bg-green-50 border-green-200" : "bg-gray-50 border-gray-200"
                               )}
                             >
                               <div className="flex items-start justify-between mb-2">
@@ -1063,12 +1063,12 @@ export default function ManagerSubmissions() {
                                     <span className="text-xs text-gray-500">• {request.reviewer.designation}</span>
                                   )}
                                 </div>
-                                <Badge variant={request.status === 'completed' ? 'default' : 'secondary'}>
-                                  {request.status === 'completed' ? 'Submitted' : 'Pending'}
+                                <Badge variant={request.status === 'submitted' ? 'default' : 'secondary'}>
+                                  {request.status === 'submitted' ? 'Submitted' : 'Pending'}
                                 </Badge>
                               </div>
                               
-                              {request.status === 'completed' && request.feedbackResponse ? (
+                              {request.status === 'submitted' && request.feedbackResponse ? (
                                 <div className="mt-3 space-y-3 text-sm">
                                   <div className="grid grid-cols-2 gap-2">
                                     <div>
