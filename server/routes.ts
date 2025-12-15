@@ -543,6 +543,188 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Analytics endpoint for HR Manager
+  app.get('/api/analytics/performance-trends', isAuthenticated, requireRoles(['super_admin', 'admin', 'hr_manager']), async (req: any, res) => {
+    try {
+      const requestingUserId = req.user.claims.sub;
+      const requestingUser = await storage.getUser(requestingUserId);
+      
+      if (!requestingUser?.companyId) {
+        return res.status(400).json({ message: "User must belong to a company" });
+      }
+      
+      const companyId = requestingUser.companyId;
+      
+      // Get all evaluations for the company with ratings
+      const allEvaluations = await storage.getEvaluationsForCalibration(companyId);
+      const completedEvaluations = allEvaluations.filter(e => e.overallRating !== null && e.overallRating !== undefined);
+      
+      // Get all users for the company
+      const users = await storage.getUsers({ companyId }, requestingUserId);
+      
+      // Get appraisal cycles for the company
+      let adminId = requestingUserId;
+      if (requestingUser.role === 'hr_manager') {
+        const companyAdmins = await storage.getUsers({ role: 'admin', companyId });
+        if (companyAdmins && companyAdmins.length > 0) {
+          adminId = companyAdmins[0].id;
+        }
+      }
+      const appraisalCycles = await storage.getAppraisalCycles(adminId);
+      const locations = await storage.getLocations(adminId);
+      const levels = await storage.getLevels(adminId);
+      const grades = await storage.getGrades(adminId);
+      
+      // 1. Rating Distribution
+      const ratingDistribution = [1, 2, 3, 4, 5].map(rating => ({
+        rating,
+        count: completedEvaluations.filter(e => e.overallRating === rating).length,
+        calibratedCount: completedEvaluations.filter(e => e.calibratedRating === rating).length,
+      }));
+      
+      // 2. Performance Trends by Appraisal Cycle
+      const cyclePerformance = appraisalCycles.map(cycle => {
+        const cycleEvaluations = completedEvaluations.filter(e => e.appraisalCycleId === cycle.id);
+        const ratings = cycleEvaluations.map(e => e.overallRating as number);
+        const calibratedRatings = cycleEvaluations.filter(e => e.calibratedRating).map(e => e.calibratedRating as number);
+        
+        return {
+          cycleId: cycle.id,
+          cycleName: cycle.code,
+          cycleDescription: cycle.description,
+          totalEvaluations: cycleEvaluations.length,
+          averageRating: ratings.length > 0 ? Number((ratings.reduce((a, b) => a + b, 0) / ratings.length).toFixed(2)) : 0,
+          averageCalibratedRating: calibratedRatings.length > 0 ? Number((calibratedRatings.reduce((a, b) => a + b, 0) / calibratedRatings.length).toFixed(2)) : 0,
+          completionRate: cycleEvaluations.length > 0 ? Math.round((cycleEvaluations.filter(e => e.meetingCompletedAt).length / cycleEvaluations.length) * 100) : 0,
+        };
+      }).filter(c => c.totalEvaluations > 0);
+      
+      // 3. Department Performance Comparison
+      const departmentPerformance: Record<string, { count: number; totalRating: number; name: string }> = {};
+      completedEvaluations.forEach(e => {
+        const dept = e.department || 'Unknown';
+        if (!departmentPerformance[dept]) {
+          departmentPerformance[dept] = { count: 0, totalRating: 0, name: dept };
+        }
+        departmentPerformance[dept].count++;
+        departmentPerformance[dept].totalRating += (e.overallRating as number) || 0;
+      });
+      
+      const departmentStats = Object.values(departmentPerformance).map(d => ({
+        department: d.name,
+        employeeCount: d.count,
+        averageRating: d.count > 0 ? Number((d.totalRating / d.count).toFixed(2)) : 0,
+      })).sort((a, b) => b.averageRating - a.averageRating);
+      
+      // 4. Location Performance Comparison
+      const locationPerformance: Record<string, { count: number; totalRating: number; name: string }> = {};
+      completedEvaluations.forEach(e => {
+        const locId = e.locationId || 'unknown';
+        const location = locations.find(l => l.id === locId);
+        const locName = location?.name || 'Unknown';
+        if (!locationPerformance[locId]) {
+          locationPerformance[locId] = { count: 0, totalRating: 0, name: locName };
+        }
+        locationPerformance[locId].count++;
+        locationPerformance[locId].totalRating += (e.overallRating as number) || 0;
+      });
+      
+      const locationStats = Object.values(locationPerformance).map(l => ({
+        location: l.name,
+        employeeCount: l.count,
+        averageRating: l.count > 0 ? Number((l.totalRating / l.count).toFixed(2)) : 0,
+      })).sort((a, b) => b.averageRating - a.averageRating);
+      
+      // 5. Level Performance
+      const levelPerformance: Record<string, { count: number; totalRating: number; name: string }> = {};
+      completedEvaluations.forEach(e => {
+        const levId = e.levelId || 'unknown';
+        const level = levels.find(l => l.id === levId);
+        const levName = level ? `${level.code} - ${level.description}` : 'Unknown';
+        if (!levelPerformance[levId]) {
+          levelPerformance[levId] = { count: 0, totalRating: 0, name: levName };
+        }
+        levelPerformance[levId].count++;
+        levelPerformance[levId].totalRating += (e.overallRating as number) || 0;
+      });
+      
+      const levelStats = Object.values(levelPerformance).map(l => ({
+        level: l.name,
+        employeeCount: l.count,
+        averageRating: l.count > 0 ? Number((l.totalRating / l.count).toFixed(2)) : 0,
+      })).sort((a, b) => b.averageRating - a.averageRating);
+      
+      // 6. Grade Performance
+      const gradePerformance: Record<string, { count: number; totalRating: number; name: string }> = {};
+      completedEvaluations.forEach(e => {
+        const grdId = e.gradeId || 'unknown';
+        const grade = grades.find(g => g.id === grdId);
+        const grdName = grade ? `${grade.code} - ${grade.description}` : 'Unknown';
+        if (!gradePerformance[grdId]) {
+          gradePerformance[grdId] = { count: 0, totalRating: 0, name: grdName };
+        }
+        gradePerformance[grdId].count++;
+        gradePerformance[grdId].totalRating += (e.overallRating as number) || 0;
+      });
+      
+      const gradeStats = Object.values(gradePerformance).map(g => ({
+        grade: g.name,
+        employeeCount: g.count,
+        averageRating: g.count > 0 ? Number((g.totalRating / g.count).toFixed(2)) : 0,
+      })).sort((a, b) => b.averageRating - a.averageRating);
+      
+      // 7. Summary Statistics
+      const allRatings = completedEvaluations.map(e => e.overallRating as number);
+      const calibratedRatings = completedEvaluations.filter(e => e.calibratedRating).map(e => e.calibratedRating as number);
+      
+      const summary = {
+        totalEmployees: users.length,
+        totalEvaluations: allEvaluations.length,
+        completedEvaluations: completedEvaluations.length,
+        averageRating: allRatings.length > 0 ? Number((allRatings.reduce((a, b) => a + b, 0) / allRatings.length).toFixed(2)) : 0,
+        averageCalibratedRating: calibratedRatings.length > 0 ? Number((calibratedRatings.reduce((a, b) => a + b, 0) / calibratedRatings.length).toFixed(2)) : 0,
+        calibrationRate: completedEvaluations.length > 0 ? Math.round((completedEvaluations.filter(e => e.calibratedRating).length / completedEvaluations.length) * 100) : 0,
+        meetingsCompletedRate: completedEvaluations.length > 0 ? Math.round((completedEvaluations.filter(e => e.meetingCompletedAt).length / completedEvaluations.length) * 100) : 0,
+        topPerformers: completedEvaluations.filter(e => e.overallRating === 5).length,
+        needsImprovement: completedEvaluations.filter(e => e.overallRating !== null && e.overallRating <= 2).length,
+      };
+      
+      // 8. Manager Performance (average ratings given by each manager)
+      const managerPerformance: Record<string, { count: number; totalRating: number; name: string; id: string }> = {};
+      completedEvaluations.forEach(e => {
+        const mgrId = e.managerId || 'unknown';
+        const manager = users.find(u => u.id === mgrId);
+        const mgrName = manager ? `${manager.firstName} ${manager.lastName}` : 'Unknown';
+        if (!managerPerformance[mgrId]) {
+          managerPerformance[mgrId] = { count: 0, totalRating: 0, name: mgrName, id: mgrId };
+        }
+        managerPerformance[mgrId].count++;
+        managerPerformance[mgrId].totalRating += (e.overallRating as number) || 0;
+      });
+      
+      const managerStats = Object.values(managerPerformance).map(m => ({
+        managerId: m.id,
+        managerName: m.name,
+        teamSize: m.count,
+        averageRatingGiven: m.count > 0 ? Number((m.totalRating / m.count).toFixed(2)) : 0,
+      })).filter(m => m.managerName !== 'Unknown').sort((a, b) => b.teamSize - a.teamSize);
+      
+      res.json({
+        summary,
+        ratingDistribution,
+        cyclePerformance,
+        departmentStats,
+        locationStats,
+        levelStats,
+        gradeStats,
+        managerStats,
+      });
+    } catch (error) {
+      console.error("Error fetching performance analytics:", error);
+      res.status(500).json({ message: "Failed to fetch performance analytics" });
+    }
+  });
+
   // Manager Dashboard Endpoints
   app.get('/api/dashboard/manager/metrics', isAuthenticated, requireRoles(['super_admin', 'admin', 'manager']), async (req: any, res) => {
     try {

@@ -31,6 +31,7 @@ import ManagerSubmissions from "@/pages/ManagerSubmissions";
 import Meetings from "@/pages/Meetings";
 import HRMeetingsView from "@/pages/HRMeetingsView";
 import CalibrateRatings from "@/pages/CalibrateRatings";
+import Analytics from "@/pages/Analytics";
 import DevelopmentGoals from "@/pages/DevelopmentGoals";
 import FeedbackRequests from "@/pages/FeedbackRequests";
 import FeedbackRequestForm from "@/pages/FeedbackRequestForm";
@@ -77,6 +78,7 @@ function Router() {
           <Route path="/feedback-requests/:id" component={FeedbackRequestForm} />
           <Route path="/hr-meetings" component={HRMeetingsView} />
           <Route path="/calibrate-ratings" component={CalibrateRatings} />
+          <Route path="/analytics" component={Analytics} />
           <Route path="/settings" component={Settings} />
         </>
       )}
