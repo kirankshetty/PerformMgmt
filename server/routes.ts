@@ -5027,6 +5027,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Manager: Get feedback requests for a specific subject (team member)
+  // IMPORTANT: This route must be defined BEFORE /api/feedback-requests/:id to avoid route conflicts
+  app.get('/api/feedback-requests/subject/:subjectId', isAuthenticated, requireRoles(['manager']), async (req: any, res) => {
+    try {
+      const managerId = req.user.claims.sub;
+      const { subjectId } = req.params;
+      
+      // Get manager to verify company scope
+      const manager = await storage.getUser(managerId);
+      if (!manager?.companyId) {
+        return res.status(403).json({ message: "Access denied. Manager must belong to a company." });
+      }
+      
+      // Verify the subject is a team member of this manager AND in the same company
+      const subject = await storage.getUser(subjectId);
+      if (!subject || subject.reportingManagerId !== managerId || subject.companyId !== manager.companyId) {
+        return res.status(403).json({ message: "Access denied. You can only view feedback for your team members." });
+      }
+      
+      const feedbackRequests = await storage.getFeedbackRequestsForSubject(subjectId);
+      
+      // Enrich with reviewer details
+      const enrichedRequests = await Promise.all(
+        feedbackRequests.map(async (request) => {
+          const reviewer = request.reviewerId ? await storage.getUser(request.reviewerId) : null;
+          return {
+            ...request,
+            reviewer: reviewer ? {
+              id: reviewer.id,
+              firstName: reviewer.firstName,
+              lastName: reviewer.lastName,
+              email: reviewer.email,
+              department: reviewer.department,
+              designation: reviewer.designation,
+            } : null,
+            reviewerDisplay: reviewer 
+              ? `${reviewer.firstName} ${reviewer.lastName}` 
+              : request.externalEmail || 'External Reviewer',
+          };
+        })
+      );
+      
+      res.json(enrichedRequests);
+    } catch (error) {
+      console.error("Error fetching subject feedback requests:", error);
+      res.status(500).json({ message: "Failed to fetch feedback requests" });
+    }
+  });
+
   // Get a specific feedback request
   app.get('/api/feedback-requests/:id', isAuthenticated, async (req: any, res) => {
     try {

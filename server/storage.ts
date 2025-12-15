@@ -280,6 +280,7 @@ export interface IStorage {
   
   // Feedback Request operations
   getFeedbackRequestsForReviewer(reviewerId: string): Promise<FeedbackRequest[]>;
+  getFeedbackRequestsForSubject(subjectId: string): Promise<FeedbackRequest[]>;
   getFeedbackRequest(id: string): Promise<FeedbackRequest | undefined>;
   createFeedbackRequest(request: InsertFeedbackRequest): Promise<FeedbackRequest>;
   submitFeedbackRequest(id: string, reviewerId: string, feedback: SubmitFeedback): Promise<FeedbackRequest>;
@@ -2625,6 +2626,14 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(feedbackRequests)
       .where(eq(feedbackRequests.reviewerId, reviewerId))
+      .orderBy(desc(feedbackRequests.createdAt));
+  }
+
+  async getFeedbackRequestsForSubject(subjectId: string): Promise<FeedbackRequest[]> {
+    return await db
+      .select()
+      .from(feedbackRequests)
+      .where(eq(feedbackRequests.subjectId, subjectId))
       .orderBy(desc(feedbackRequests.createdAt));
   }
 

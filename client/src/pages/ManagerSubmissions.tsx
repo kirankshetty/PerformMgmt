@@ -32,7 +32,8 @@ import {
   UserPlus,
   Mail,
   Search,
-  X
+  X,
+  Eye
 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -116,6 +117,27 @@ interface MeetingNotesData {
   showNotesToEmployee: boolean;
 }
 
+interface FeedbackRequestData {
+  id: string;
+  requesterId: string;
+  reviewerId: string | null;
+  externalEmail: string | null;
+  subjectId: string;
+  status: string;
+  feedbackResponse: any;
+  submittedAt: string | null;
+  createdAt: string;
+  reviewer: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    department: string;
+    designation: string;
+  } | null;
+  reviewerDisplay: string;
+}
+
 export default function ManagerSubmissions() {
   const [selectedEvaluation, setSelectedEvaluation] = useState<Evaluation | null>(null);
   const [isReviewDialogOpen, setIsReviewDialogOpen] = useState(false);
@@ -135,7 +157,7 @@ export default function ManagerSubmissions() {
   
   // 360 Degree Feedback state
   const [is360DialogOpen, setIs360DialogOpen] = useState(false);
-  const [selected360Tab, setSelected360Tab] = useState<'peers' | 'reportees' | 'others'>('peers');
+  const [selected360Tab, setSelected360Tab] = useState<'feedback' | 'peers' | 'reportees' | 'others'>('feedback');
   const [selectedPeerIds, setSelectedPeerIds] = useState<string[]>([]);
   const [selectedReporteeIds, setSelectedReporteeIds] = useState<string[]>([]);
   const [externalEmails, setExternalEmails] = useState<string>('');
@@ -249,6 +271,12 @@ export default function ManagerSubmissions() {
     enabled: is360DialogOpen,
   });
 
+  // 360 Feedback - fetch existing feedback requests for the selected employee
+  const { data: subjectFeedbackRequests = [], isLoading: isFeedbackLoading } = useQuery<FeedbackRequestData[]>({
+    queryKey: ['/api/feedback-requests/subject', selectedEvaluation?.employeeId],
+    enabled: is360DialogOpen && !!selectedEvaluation?.employeeId,
+  });
+
   // 360 Feedback - create feedback requests mutation
   const createFeedbackRequestsMutation = useMutation({
     mutationFn: async (data: { subjectId: string; evaluationId: string; reviewerIds: string[]; externalEmails: string[] }) => {
@@ -279,7 +307,7 @@ export default function ManagerSubmissions() {
   const open360Dialog = (evaluation: Evaluation) => {
     setSelectedEvaluation(evaluation);
     setIs360DialogOpen(true);
-    setSelected360Tab('peers');
+    setSelected360Tab('feedback');
     setSelectedPeerIds([]);
     setSelectedReporteeIds([]);
     setExternalEmails('');
@@ -985,7 +1013,11 @@ export default function ManagerSubmissions() {
             ) : (
               <>
                 <Tabs value={selected360Tab} onValueChange={(v) => setSelected360Tab(v as typeof selected360Tab)} className="flex-1 overflow-hidden flex flex-col">
-                  <TabsList className="grid w-full grid-cols-3">
+                  <TabsList className="grid w-full grid-cols-4">
+                    <TabsTrigger value="feedback" data-testid="360-tab-feedback">
+                      <Eye className="h-4 w-4 mr-1" />
+                      View ({subjectFeedbackRequests.length})
+                    </TabsTrigger>
                     <TabsTrigger value="peers" data-testid="360-tab-peers">
                       <UserPlus className="h-4 w-4 mr-1" />
                       Peers ({selectedPeerIds.length})
@@ -999,6 +1031,111 @@ export default function ManagerSubmissions() {
                       Others
                     </TabsTrigger>
                   </TabsList>
+
+                  <TabsContent value="feedback" className="flex-1 overflow-hidden flex flex-col mt-4">
+                    {isFeedbackLoading ? (
+                      <div className="flex items-center justify-center py-8">
+                        <Clock className="h-5 w-5 animate-spin mr-2" />
+                        Loading feedback...
+                      </div>
+                    ) : subjectFeedbackRequests.length === 0 ? (
+                      <div className="text-center py-8 text-gray-500">
+                        <Users className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+                        <p className="font-medium">No feedback requests yet</p>
+                        <p className="text-sm mt-1">Use the other tabs to request feedback from peers, reportees, or external contacts.</p>
+                      </div>
+                    ) : (
+                      <ScrollArea className="border rounded-lg max-h-[350px] overflow-y-auto">
+                        <div className="p-2 space-y-2">
+                          {subjectFeedbackRequests.map((request) => (
+                            <div
+                              key={request.id}
+                              className={cn(
+                                "p-4 rounded-lg border",
+                                request.status === 'completed' ? "bg-green-50 border-green-200" : "bg-gray-50 border-gray-200"
+                              )}
+                            >
+                              <div className="flex items-start justify-between mb-2">
+                                <div className="flex items-center gap-2">
+                                  <User className="h-4 w-4 text-gray-500" />
+                                  <span className="font-medium">{request.reviewerDisplay}</span>
+                                  {request.reviewer?.designation && (
+                                    <span className="text-xs text-gray-500">• {request.reviewer.designation}</span>
+                                  )}
+                                </div>
+                                <Badge variant={request.status === 'completed' ? 'default' : 'secondary'}>
+                                  {request.status === 'completed' ? 'Submitted' : 'Pending'}
+                                </Badge>
+                              </div>
+                              
+                              {request.status === 'completed' && request.feedbackResponse ? (
+                                <div className="mt-3 space-y-3 text-sm">
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <div>
+                                      <span className="text-gray-500">Collaboration:</span>
+                                      <Badge variant="outline" className="ml-2 capitalize">
+                                        {request.feedbackResponse.collaborationRating?.replace('_', ' ') || '-'}
+                                      </Badge>
+                                    </div>
+                                    <div>
+                                      <span className="text-gray-500">Communication:</span>
+                                      <Badge variant="outline" className="ml-2 capitalize">
+                                        {request.feedbackResponse.communicationRating?.replace('_', ' ') || '-'}
+                                      </Badge>
+                                    </div>
+                                    <div>
+                                      <span className="text-gray-500">Reliability:</span>
+                                      <Badge variant="outline" className="ml-2 capitalize">
+                                        {request.feedbackResponse.reliabilityRating?.replace('_', ' ') || '-'}
+                                      </Badge>
+                                    </div>
+                                    <div>
+                                      <span className="text-gray-500">Problem Solving:</span>
+                                      <Badge variant="outline" className="ml-2 capitalize">
+                                        {request.feedbackResponse.problemSolvingRating?.replace('_', ' ') || '-'}
+                                      </Badge>
+                                    </div>
+                                  </div>
+                                  
+                                  {request.feedbackResponse.strengths && (
+                                    <div>
+                                      <p className="text-gray-500 font-medium">Strengths:</p>
+                                      <p className="text-gray-700 bg-white p-2 rounded border mt-1">{request.feedbackResponse.strengths}</p>
+                                    </div>
+                                  )}
+                                  
+                                  {request.feedbackResponse.areasForImprovement && (
+                                    <div>
+                                      <p className="text-gray-500 font-medium">Areas for Improvement:</p>
+                                      <p className="text-gray-700 bg-white p-2 rounded border mt-1">{request.feedbackResponse.areasForImprovement}</p>
+                                    </div>
+                                  )}
+                                  
+                                  {request.feedbackResponse.additionalComments && (
+                                    <div>
+                                      <p className="text-gray-500 font-medium">Additional Comments:</p>
+                                      <p className="text-gray-700 bg-white p-2 rounded border mt-1">{request.feedbackResponse.additionalComments}</p>
+                                    </div>
+                                  )}
+                                  
+                                  {request.submittedAt && (
+                                    <p className="text-xs text-gray-400 mt-2">
+                                      Submitted on {format(new Date(request.submittedAt), 'MMM d, yyyy')}
+                                    </p>
+                                  )}
+                                </div>
+                              ) : (
+                                <div className="mt-2 text-sm text-gray-500">
+                                  <Clock className="h-4 w-4 inline mr-1" />
+                                  Requested on {format(new Date(request.createdAt), 'MMM d, yyyy')}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </ScrollArea>
+                    )}
+                  </TabsContent>
 
                   <TabsContent value="peers" className="flex-1 overflow-hidden flex flex-col mt-4">
                     <div className="relative mb-3">
