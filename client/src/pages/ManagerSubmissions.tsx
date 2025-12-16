@@ -163,6 +163,7 @@ export default function ManagerSubmissions() {
   const [externalEmails, setExternalEmails] = useState<string>('');
   const [peerSearchTerm, setPeerSearchTerm] = useState('');
   const [confirmationResult, setConfirmationResult] = useState<{success: boolean; emailsSent: string[]} | null>(null);
+  const [expandedFeedbackIds, setExpandedFeedbackIds] = useState<Set<string>>(new Set());
   
   const { toast } = useToast();
 
@@ -1055,79 +1056,106 @@ export default function ManagerSubmissions() {
                                 request.status === 'submitted' ? "bg-green-50 border-green-200" : "bg-gray-50 border-gray-200"
                               )}
                             >
-                              <div className="flex items-start justify-between mb-2">
-                                <div className="flex items-center gap-2">
-                                  <User className="h-4 w-4 text-gray-500" />
-                                  <span className="font-medium">{request.reviewerDisplay}</span>
-                                  {request.reviewer?.designation && (
-                                    <span className="text-xs text-gray-500">• {request.reviewer.designation}</span>
-                                  )}
-                                </div>
+                              <div className="flex items-center gap-2">
+                                <User className="h-4 w-4 text-gray-500" />
+                                <span className="font-medium">{request.reviewerDisplay}</span>
+                                {request.reviewer?.designation && (
+                                  <span className="text-xs text-gray-500">• {request.reviewer.designation}</span>
+                                )}
+                              </div>
+                              
+                              <div className="mt-2 text-sm text-gray-500">
+                                <Clock className="h-4 w-4 inline mr-1" />
+                                Requested on {format(new Date(request.createdAt), 'MMM d, yyyy')}
+                              </div>
+                              
+                              <div className="mt-2 flex items-center gap-2">
+                                <span className="text-sm text-gray-500">Status:</span>
                                 <Badge variant={request.status === 'submitted' ? 'default' : 'secondary'}>
                                   {request.status === 'submitted' ? 'Submitted' : 'Pending'}
                                 </Badge>
                               </div>
                               
-                              {request.status === 'submitted' && request.feedbackResponse ? (
-                                <div className="mt-3 space-y-3 text-sm">
-                                  <div className="grid grid-cols-2 gap-2">
-                                    <div>
-                                      <span className="text-gray-500">Collaboration:</span>
-                                      <Badge variant="outline" className="ml-2 capitalize">
-                                        {request.feedbackResponse.collaborationRating?.replace('_', ' ') || '-'}
-                                      </Badge>
-                                    </div>
-                                    <div>
-                                      <span className="text-gray-500">Communication:</span>
-                                      <Badge variant="outline" className="ml-2 capitalize">
-                                        {request.feedbackResponse.communicationRating?.replace('_', ' ') || '-'}
-                                      </Badge>
-                                    </div>
-                                    <div>
-                                      <span className="text-gray-500">Reliability:</span>
-                                      <Badge variant="outline" className="ml-2 capitalize">
-                                        {request.feedbackResponse.reliabilityRating?.replace('_', ' ') || '-'}
-                                      </Badge>
-                                    </div>
-                                    <div>
-                                      <span className="text-gray-500">Problem Solving:</span>
-                                      <Badge variant="outline" className="ml-2 capitalize">
-                                        {request.feedbackResponse.problemSolvingRating?.replace('_', ' ') || '-'}
-                                      </Badge>
-                                    </div>
-                                  </div>
+                              {request.status === 'submitted' && request.feedbackResponse && (
+                                <div className="mt-3">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                      setExpandedFeedbackIds(prev => {
+                                        const newSet = new Set(prev);
+                                        if (newSet.has(request.id)) {
+                                          newSet.delete(request.id);
+                                        } else {
+                                          newSet.add(request.id);
+                                        }
+                                        return newSet;
+                                      });
+                                    }}
+                                    className="flex items-center gap-1"
+                                    data-testid={`view-feedback-btn-${request.id}`}
+                                  >
+                                    <Eye className="h-4 w-4" />
+                                    {expandedFeedbackIds.has(request.id) ? 'Hide Feedback' : 'View Feedback'}
+                                  </Button>
                                   
-                                  {request.feedbackResponse.strengths && (
-                                    <div>
-                                      <p className="text-gray-500 font-medium">Strengths:</p>
-                                      <p className="text-gray-700 bg-white p-2 rounded border mt-1">{request.feedbackResponse.strengths}</p>
+                                  {expandedFeedbackIds.has(request.id) && (
+                                    <div className="mt-3 space-y-3 text-sm border-t pt-3">
+                                      <div className="grid grid-cols-2 gap-2">
+                                        <div>
+                                          <span className="text-gray-500">Collaboration:</span>
+                                          <Badge variant="outline" className="ml-2 capitalize">
+                                            {request.feedbackResponse.collaborationRating?.replace('_', ' ') || '-'}
+                                          </Badge>
+                                        </div>
+                                        <div>
+                                          <span className="text-gray-500">Communication:</span>
+                                          <Badge variant="outline" className="ml-2 capitalize">
+                                            {request.feedbackResponse.communicationRating?.replace('_', ' ') || '-'}
+                                          </Badge>
+                                        </div>
+                                        <div>
+                                          <span className="text-gray-500">Reliability:</span>
+                                          <Badge variant="outline" className="ml-2 capitalize">
+                                            {request.feedbackResponse.reliabilityRating?.replace('_', ' ') || '-'}
+                                          </Badge>
+                                        </div>
+                                        <div>
+                                          <span className="text-gray-500">Problem Solving:</span>
+                                          <Badge variant="outline" className="ml-2 capitalize">
+                                            {request.feedbackResponse.problemSolvingRating?.replace('_', ' ') || '-'}
+                                          </Badge>
+                                        </div>
+                                      </div>
+                                      
+                                      {request.feedbackResponse.strengths && (
+                                        <div>
+                                          <p className="text-gray-500 font-medium">Strengths:</p>
+                                          <p className="text-gray-700 bg-white p-2 rounded border mt-1">{request.feedbackResponse.strengths}</p>
+                                        </div>
+                                      )}
+                                      
+                                      {request.feedbackResponse.areasForImprovement && (
+                                        <div>
+                                          <p className="text-gray-500 font-medium">Areas for Improvement:</p>
+                                          <p className="text-gray-700 bg-white p-2 rounded border mt-1">{request.feedbackResponse.areasForImprovement}</p>
+                                        </div>
+                                      )}
+                                      
+                                      {request.feedbackResponse.additionalComments && (
+                                        <div>
+                                          <p className="text-gray-500 font-medium">Additional Comments:</p>
+                                          <p className="text-gray-700 bg-white p-2 rounded border mt-1">{request.feedbackResponse.additionalComments}</p>
+                                        </div>
+                                      )}
+                                      
+                                      {request.submittedAt && (
+                                        <p className="text-xs text-gray-400 mt-2">
+                                          Submitted on {format(new Date(request.submittedAt), 'MMM d, yyyy')}
+                                        </p>
+                                      )}
                                     </div>
                                   )}
-                                  
-                                  {request.feedbackResponse.areasForImprovement && (
-                                    <div>
-                                      <p className="text-gray-500 font-medium">Areas for Improvement:</p>
-                                      <p className="text-gray-700 bg-white p-2 rounded border mt-1">{request.feedbackResponse.areasForImprovement}</p>
-                                    </div>
-                                  )}
-                                  
-                                  {request.feedbackResponse.additionalComments && (
-                                    <div>
-                                      <p className="text-gray-500 font-medium">Additional Comments:</p>
-                                      <p className="text-gray-700 bg-white p-2 rounded border mt-1">{request.feedbackResponse.additionalComments}</p>
-                                    </div>
-                                  )}
-                                  
-                                  {request.submittedAt && (
-                                    <p className="text-xs text-gray-400 mt-2">
-                                      Submitted on {format(new Date(request.submittedAt), 'MMM d, yyyy')}
-                                    </p>
-                                  )}
-                                </div>
-                              ) : (
-                                <div className="mt-2 text-sm text-gray-500">
-                                  <Clock className="h-4 w-4 inline mr-1" />
-                                  Requested on {format(new Date(request.createdAt), 'MMM d, yyyy')}
                                 </div>
                               )}
                             </div>
