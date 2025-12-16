@@ -1053,11 +1053,19 @@ export default function ManagerSubmissions() {
                             <div
                               key={request.id}
                               className={cn(
-                                "p-4 rounded-lg border",
+                                "p-4 rounded-lg border relative",
                                 request.status === 'submitted' ? "bg-green-50 border-green-200" : "bg-gray-50 border-gray-200"
                               )}
                             >
-                              <div className="flex items-center gap-2">
+                              {request.status === 'submitted' && request.feedbackResponse?.recommendedRating && (
+                                <div className="absolute top-3 right-3 flex items-center gap-1 bg-primary text-white px-3 py-1.5 rounded-full shadow-sm">
+                                  <Star className="h-4 w-4 fill-current" />
+                                  <span className="font-bold text-lg">{request.feedbackResponse.recommendedRating}</span>
+                                  <span className="text-xs opacity-90">/5</span>
+                                </div>
+                              )}
+                              
+                              <div className="flex items-center gap-2 pr-20">
                                 <User className="h-4 w-4 text-gray-500" />
                                 <span className="font-medium">{request.reviewerDisplay}</span>
                                 {request.reviewer?.designation && (
