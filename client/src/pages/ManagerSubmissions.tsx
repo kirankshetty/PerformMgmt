@@ -33,7 +33,8 @@ import {
   Mail,
   Search,
   X,
-  Eye
+  Eye,
+  Download
 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -1078,26 +1079,40 @@ export default function ManagerSubmissions() {
                               
                               {request.status === 'submitted' && request.feedbackResponse && (
                                 <div className="mt-3">
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => {
-                                      setExpandedFeedbackIds(prev => {
-                                        const newSet = new Set(prev);
-                                        if (newSet.has(request.id)) {
-                                          newSet.delete(request.id);
-                                        } else {
-                                          newSet.add(request.id);
-                                        }
-                                        return newSet;
-                                      });
-                                    }}
-                                    className="flex items-center gap-1"
-                                    data-testid={`view-feedback-btn-${request.id}`}
-                                  >
-                                    <Eye className="h-4 w-4" />
-                                    {expandedFeedbackIds.has(request.id) ? 'Hide Feedback' : 'View Feedback'}
-                                  </Button>
+                                  <div className="flex items-center gap-2">
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => {
+                                        setExpandedFeedbackIds(prev => {
+                                          const newSet = new Set(prev);
+                                          if (newSet.has(request.id)) {
+                                            newSet.delete(request.id);
+                                          } else {
+                                            newSet.add(request.id);
+                                          }
+                                          return newSet;
+                                        });
+                                      }}
+                                      className="flex items-center gap-1"
+                                      data-testid={`view-feedback-btn-${request.id}`}
+                                    >
+                                      <Eye className="h-4 w-4" />
+                                      {expandedFeedbackIds.has(request.id) ? 'Hide Feedback' : 'View Feedback'}
+                                    </Button>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => {
+                                        window.open(`/api/feedback-requests/${request.id}/pdf`, '_blank');
+                                      }}
+                                      className="flex items-center gap-1"
+                                      data-testid={`download-feedback-btn-${request.id}`}
+                                    >
+                                      <Download className="h-4 w-4" />
+                                      Download PDF
+                                    </Button>
+                                  </div>
                                   
                                   {expandedFeedbackIds.has(request.id) && (
                                     <div className="mt-3 space-y-3 text-sm border-t pt-3">

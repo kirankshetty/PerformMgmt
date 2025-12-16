@@ -5048,12 +5048,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const feedbackRequests = await storage.getFeedbackRequestsForSubject(subjectId);
       
-      // Enrich with reviewer details
+      // Enrich with reviewer details and construct feedbackResponse object
       const enrichedRequests = await Promise.all(
         feedbackRequests.map(async (request) => {
           const reviewer = request.reviewerId ? await storage.getUser(request.reviewerId) : null;
+          
+          // Construct feedbackResponse object from individual columns for submitted requests
+          const feedbackResponse = request.status === 'submitted' ? {
+            collaborationRating: request.collaborationRating,
+            communicationRating: request.communicationRating,
+            reliabilityRating: request.reliabilityRating,
+            problemSolvingRating: request.problemSolvingRating,
+            ownershipRating: request.ownershipRating,
+            opennessToFeedbackRating: request.opennessToFeedbackRating,
+            conflictHandlingRating: request.conflictHandlingRating,
+            jobSpecificCompetencies: request.jobSpecificCompetencies,
+            strengths: request.strengths,
+            areasForImprovement: request.developmentAreas,
+            additionalComments: request.overallSummary,
+            recommendedRating: request.recommendedRating,
+            relationshipWithPeer: request.relationshipWithPeer,
+          } : null;
+          
           return {
             ...request,
+            feedbackResponse,
             reviewer: reviewer ? {
               id: reviewer.id,
               firstName: reviewer.firstName,
@@ -5156,6 +5175,144 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       res.status(error.message?.includes('not found') ? 404 : error.message?.includes('authorized') ? 403 : 500)
         .json({ message: error.message || "Failed to submit feedback" });
+    }
+  });
+
+  // Manager: Download feedback as PDF
+  app.get('/api/feedback-requests/:id/pdf', isAuthenticated, requireRoles(['manager']), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const managerId = req.user.claims.sub;
+      
+      const feedbackRequest = await storage.getFeedbackRequest(id);
+      if (!feedbackRequest) {
+        return res.status(404).json({ message: "Feedback request not found" });
+      }
+      
+      // Verify manager access - must be the requester or manager of the subject
+      const manager = await storage.getUser(managerId);
+      const subject = await storage.getUser(feedbackRequest.subjectId);
+      
+      if (!manager?.companyId || !subject || 
+          (feedbackRequest.requesterId !== managerId && subject.reportingManagerId !== managerId) ||
+          subject.companyId !== manager.companyId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      if (feedbackRequest.status !== 'submitted') {
+        return res.status(400).json({ message: "Feedback has not been submitted yet" });
+      }
+      
+      // Get reviewer details
+      const reviewer = feedbackRequest.reviewerId 
+        ? await storage.getUser(feedbackRequest.reviewerId) 
+        : null;
+      const reviewerName = reviewer 
+        ? `${reviewer.firstName} ${reviewer.lastName}` 
+        : feedbackRequest.externalEmail || 'External Reviewer';
+      
+      // Create PDF
+      const doc = new PDFDocument({ margin: 50 });
+      const chunks: Buffer[] = [];
+      
+      doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+      doc.on('end', () => {
+        const pdfBuffer = Buffer.concat(chunks);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="360-feedback-${subject.firstName}-${subject.lastName}-${reviewerName.replace(/\s+/g, '-')}.pdf"`);
+        res.send(pdfBuffer);
+      });
+      
+      // Header
+      doc.fontSize(20).font('Helvetica-Bold').text('360 Degree Feedback Report', { align: 'center' });
+      doc.moveDown();
+      
+      // Subject Info
+      doc.fontSize(12).font('Helvetica-Bold').text('Employee:');
+      doc.fontSize(11).font('Helvetica').text(`${subject.firstName} ${subject.lastName}`);
+      doc.text(`${subject.designation || ''} - ${subject.department || ''}`);
+      doc.moveDown(0.5);
+      
+      // Reviewer Info
+      doc.fontSize(12).font('Helvetica-Bold').text('Feedback Provided By:');
+      doc.fontSize(11).font('Helvetica').text(reviewerName);
+      if (reviewer?.designation) {
+        doc.text(`${reviewer.designation}`);
+      }
+      doc.moveDown(0.5);
+      
+      // Relationship
+      if (feedbackRequest.relationshipWithPeer) {
+        doc.fontSize(12).font('Helvetica-Bold').text('Relationship:');
+        doc.fontSize(11).font('Helvetica').text(feedbackRequest.relationshipWithPeer);
+      }
+      doc.moveDown(0.5);
+      
+      // Submission Date
+      if (feedbackRequest.submittedAt) {
+        doc.fontSize(12).font('Helvetica-Bold').text('Submitted On:');
+        doc.fontSize(11).font('Helvetica').text(new Date(feedbackRequest.submittedAt).toLocaleDateString());
+      }
+      doc.moveDown();
+      
+      // Ratings Section
+      doc.fontSize(14).font('Helvetica-Bold').text('Performance Ratings', { underline: true });
+      doc.moveDown(0.5);
+      
+      const formatRating = (rating: string | null) => rating ? rating.replace('_', ' ').toUpperCase() : 'N/A';
+      
+      const ratings = [
+        ['Collaboration', feedbackRequest.collaborationRating],
+        ['Communication', feedbackRequest.communicationRating],
+        ['Reliability', feedbackRequest.reliabilityRating],
+        ['Problem Solving', feedbackRequest.problemSolvingRating],
+        ['Ownership', feedbackRequest.ownershipRating],
+        ['Openness to Feedback', feedbackRequest.opennessToFeedbackRating],
+        ['Conflict Handling', feedbackRequest.conflictHandlingRating],
+      ];
+      
+      ratings.forEach(([label, rating]) => {
+        doc.fontSize(11).font('Helvetica-Bold').text(`${label}: `, { continued: true });
+        doc.font('Helvetica').text(formatRating(rating as string | null));
+      });
+      
+      if (feedbackRequest.recommendedRating) {
+        doc.fontSize(11).font('Helvetica-Bold').text('Recommended Rating: ', { continued: true });
+        doc.font('Helvetica').text(`${feedbackRequest.recommendedRating}/5`);
+      }
+      doc.moveDown();
+      
+      // Written Feedback Section
+      doc.fontSize(14).font('Helvetica-Bold').text('Written Feedback', { underline: true });
+      doc.moveDown(0.5);
+      
+      if (feedbackRequest.jobSpecificCompetencies) {
+        doc.fontSize(12).font('Helvetica-Bold').text('Job-Specific Competencies:');
+        doc.fontSize(11).font('Helvetica').text(feedbackRequest.jobSpecificCompetencies);
+        doc.moveDown(0.5);
+      }
+      
+      if (feedbackRequest.strengths) {
+        doc.fontSize(12).font('Helvetica-Bold').text('Strengths:');
+        doc.fontSize(11).font('Helvetica').text(feedbackRequest.strengths);
+        doc.moveDown(0.5);
+      }
+      
+      if (feedbackRequest.developmentAreas) {
+        doc.fontSize(12).font('Helvetica-Bold').text('Areas for Improvement:');
+        doc.fontSize(11).font('Helvetica').text(feedbackRequest.developmentAreas);
+        doc.moveDown(0.5);
+      }
+      
+      if (feedbackRequest.overallSummary) {
+        doc.fontSize(12).font('Helvetica-Bold').text('Overall Summary:');
+        doc.fontSize(11).font('Helvetica').text(feedbackRequest.overallSummary);
+      }
+      
+      doc.end();
+    } catch (error) {
+      console.error("Error generating feedback PDF:", error);
+      res.status(500).json({ message: "Failed to generate PDF" });
     }
   });
 
