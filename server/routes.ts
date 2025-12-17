@@ -4692,6 +4692,102 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Development Goals API routes
   
+  // Get development goals for team members (for managers)
+  app.get('/api/development-goals/team', isAuthenticated, async (req: any, res) => {
+    try {
+      const managerId = req.user.claims.sub;
+      const manager = await storage.getUser(managerId);
+      
+      if (!manager) {
+        return res.status(404).json({ message: "Manager not found" });
+      }
+      
+      // Get all team members who report to this manager
+      const teamMembers = await storage.getUsersByManager(managerId);
+      
+      // Get development goals for all team members
+      const allGoals = [];
+      
+      for (const member of teamMembers) {
+        const memberGoals = await storage.getDevelopmentGoals(member.id);
+        
+        for (const goal of memberGoals) {
+          const evaluation = await storage.getEvaluation(goal.evaluationId);
+          let appraisalCycle = null;
+          let appraisalGroup = null;
+          let frequencyCalendarPeriod = null;
+          
+          if (evaluation?.initiatedAppraisalId) {
+            const initiatedAppraisal = await storage.getInitiatedAppraisal(evaluation.initiatedAppraisalId);
+            
+            if (initiatedAppraisal?.appraisalGroupId) {
+              appraisalGroup = await storage.getAppraisalGroup(initiatedAppraisal.appraisalGroupId);
+            }
+            
+            if (initiatedAppraisal?.frequencyCalendarId) {
+              const frequencyCalendar = await storage.getFrequencyCalendarById(initiatedAppraisal.frequencyCalendarId);
+              if (frequencyCalendar?.appraisalCycleId) {
+                appraisalCycle = await storage.getAppraisalCycleById(frequencyCalendar.appraisalCycleId);
+              }
+              
+              const detailTimings = await storage.getInitiatedAppraisalDetailTimings(evaluation.initiatedAppraisalId);
+              if (detailTimings.length > 0) {
+                const detailTiming = detailTimings[0];
+                const calendarDetails = await storage.getFrequencyCalendarDetailsByCalendarId(initiatedAppraisal.frequencyCalendarId);
+                const matchingDetail = calendarDetails.find(d => d.id === detailTiming.frequencyCalendarDetailId);
+                if (matchingDetail) {
+                  frequencyCalendarPeriod = {
+                    displayName: matchingDetail.displayName,
+                    startDate: matchingDetail.startDate,
+                    endDate: matchingDetail.endDate,
+                  };
+                }
+              }
+            }
+          }
+          
+          allGoals.push({
+            ...goal,
+            employee: {
+              id: member.id,
+              code: member.code,
+              firstName: member.firstName,
+              lastName: member.lastName,
+              email: member.email,
+              department: member.department,
+              designation: member.designation,
+              locationId: member.locationId,
+              levelId: member.levelId,
+              gradeId: member.gradeId,
+              managerId: member.reportingManagerId,
+            },
+            evaluation: evaluation ? {
+              id: evaluation.id,
+              status: evaluation.status,
+              meetingCompletedAt: evaluation.meetingCompletedAt,
+              overallRating: evaluation.overallRating,
+            } : null,
+            appraisalCycle: appraisalCycle ? {
+              id: appraisalCycle.id,
+              code: appraisalCycle.code,
+              description: appraisalCycle.description,
+            } : null,
+            appraisalGroup: appraisalGroup ? {
+              id: appraisalGroup.id,
+              name: appraisalGroup.name,
+            } : null,
+            frequencyCalendarPeriod,
+          });
+        }
+      }
+      
+      res.json(allGoals);
+    } catch (error) {
+      console.error("Error fetching team development goals:", error);
+      res.status(500).json({ message: "Failed to fetch team development goals" });
+    }
+  });
+
   // Get all development goals for current employee
   app.get('/api/development-goals', isAuthenticated, async (req: any, res) => {
     try {
