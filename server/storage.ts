@@ -27,6 +27,7 @@ import {
   appraisalGroups,
   appraisalGroupMembers,
   initiatedAppraisals,
+  initiatedAppraisalKpiWeights,
   initiatedAppraisalDetailTimings,
   scheduledAppraisalTasks,
   developmentGoals,
@@ -307,6 +308,9 @@ export interface IStorage {
   getInitiatedAppraisal(id: string): Promise<InitiatedAppraisal | null>;
   getInitiatedAppraisals(createdById: string): Promise<InitiatedAppraisal[]>;
   
+  // KPI Weight operations
+  createInitiatedAppraisalKpiWeight(weight: any): Promise<any>;
+
   // Scheduled Appraisal Task operations
   createScheduledAppraisalTask(task: InsertScheduledAppraisalTask): Promise<ScheduledAppraisalTask>;
   getPendingScheduledTasks(): Promise<ScheduledAppraisalTask[]>;
@@ -2648,8 +2652,12 @@ export class DatabaseStorage implements IStorage {
       appraisalType: appraisalData.appraisalType,
       questionnaireTemplateIds: appraisalData.questionnaireTemplateIds || [],
       documentUrl: appraisalData.documentUrl,
+      appraisalCycleId: appraisalData.appraisalCycleId || null,
+      functionalAreaId: appraisalData.functionalAreaId || null,
+      kraId: appraisalData.kraId || null,
       frequencyCalendarId: appraisalData.frequencyCalendarId,
       daysToInitiate: appraisalData.daysToInitiate,
+      whenField: appraisalData.whenField || 'after',
       daysToClose: appraisalData.daysToClose,
       numberOfReminders: appraisalData.numberOfReminders,
       excludeTenureLessThanYear: appraisalData.excludeTenureLessThanYear,
@@ -2691,6 +2699,11 @@ export class DatabaseStorage implements IStorage {
     await db.update(initiatedAppraisals)
       .set({ status: status as any, updatedAt: new Date() })
       .where(eq(initiatedAppraisals.id, id));
+  }
+
+  async createInitiatedAppraisalKpiWeight(weight: any): Promise<any> {
+    const [newWeight] = await db.insert(initiatedAppraisalKpiWeights).values(weight).returning();
+    return newWeight;
   }
 
   async createInitiatedAppraisalDetailTiming(timing: InsertInitiatedAppraisalDetailTiming): Promise<InitiatedAppraisalDetailTiming> {

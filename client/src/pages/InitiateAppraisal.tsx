@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
-import { Play, Users, FileText, Calendar, Settings2, Upload, X, Plus, ChevronDown, Calendar as CalendarIcon } from "lucide-react";
+import { Play, Users, FileText, Calendar, Settings2, Upload, X, Plus, ChevronDown, Calendar as CalendarIcon, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -49,13 +49,14 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useToast } from "@/hooks/use-toast";
 import { RoleGuard } from "@/components/RoleGuard";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import type { SafeUser, AppraisalGroup, QuestionnaireTemplate, FrequencyCalendar, FrequencyCalendarDetails, AppraisalCycle } from "@shared/schema";
+import type { SafeUser, AppraisalGroup, QuestionnaireTemplate, FrequencyCalendar, FrequencyCalendarDetails, AppraisalCycle, FunctionalArea, Kra, Kpi, ReviewFrequency } from "@shared/schema";
 
 interface AppraisalGroupWithMembers extends AppraisalGroup {
   members: SafeUser[];
 }
 
-// Multi-select component for questionnaire templates
+type KraWithKpis = Kra & { kpis: Kpi[] };
+
 const MultiSelect = ({ 
   options, 
   value, 
@@ -129,26 +130,31 @@ const MultiSelect = ({
   );
 };
 
-// Calendar detail timing configuration
 const calendarDetailTimingSchema = z.object({
   detailId: z.string(),
   daysToInitiate: z.coerce.number().min(0).max(365).default(0),
   daysToClose: z.coerce.number().min(1).max(365).default(30),
-  numberOfReminders: z.coerce.number().min(1).max(10).default(3),
 });
 
-// Form validation schema
+const kpiWeightageSchema = z.object({
+  kpiId: z.string(),
+  weightage: z.coerce.number().min(0).max(100).default(0),
+});
+
 const initiateAppraisalSchema = z.object({
   appraisalType: z.enum(['questionnaire_based', 'kpi_based', 'mbo_based', 'okr_based']),
   questionnaireTemplateIds: z.array(z.string()).default([]),
-  documentFile: z.any().optional(), // File upload
+  documentFile: z.any().optional(),
+  appraisalCycleId: z.string().optional(),
+  functionalAreaId: z.string().optional(),
+  kraId: z.string().optional(),
+  kpiWeightages: z.array(kpiWeightageSchema).default([]),
   frequencyCalendarId: z.string().optional(),
-  selectedCalendarDetailIds: z.array(z.string()).default([]), // Multi-select calendar details
-  calendarDetailTimings: z.array(calendarDetailTimingSchema).default([]), // Per-detail timing config
-  // Keep global settings as fallback when no calendar is selected
+  selectedCalendarDetailIds: z.array(z.string()).default([]),
+  calendarDetailTimings: z.array(calendarDetailTimingSchema).default([]),
   daysToInitiate: z.coerce.number().min(0).max(365).default(0),
+  whenField: z.enum(['after', 'before']).default('after'),
   daysToClose: z.coerce.number().min(1).max(365).default(30),
-  numberOfReminders: z.coerce.number().min(1).max(10).default(3),
   excludeTenureLessThanYear: z.boolean().default(false),
   excludeDojFromDate: z.date().optional(),
   excludeDojTillDate: z.date().optional(),
@@ -160,7 +166,7 @@ const initiateAppraisalSchema = z.object({
     return data.questionnaireTemplateIds && data.questionnaireTemplateIds.length > 0;
   }
   if (data.appraisalType === 'kpi_based') {
-    return !!data.documentFile;
+    return !!data.appraisalCycleId && !!data.kraId;
   }
   return true;
 }, {
@@ -177,9 +183,9 @@ export default function InitiateAppraisal() {
   const [isInitiateFormOpen, setIsInitiateFormOpen] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [selectedCalendarId, setSelectedCalendarId] = useState<string | null>(null);
+  const [selectedKraId, setSelectedKraId] = useState<string | null>(null);
   const { toast } = useToast();
 
-  // Form initialization
   const form = useForm<InitiateAppraisalForm>({
     resolver: zodResolver(initiateAppraisalSchema),
     defaultValues: {
@@ -187,9 +193,10 @@ export default function InitiateAppraisal() {
       questionnaireTemplateIds: [],
       selectedCalendarDetailIds: [],
       calendarDetailTimings: [],
+      kpiWeightages: [],
       daysToInitiate: 0,
+      whenField: 'after',
       daysToClose: 30,
-      numberOfReminders: 3,
       excludeTenureLessThanYear: false,
       excludeDojFromDate: undefined,
       excludeDojTillDate: undefined,
@@ -199,22 +206,18 @@ export default function InitiateAppraisal() {
     },
   });
 
-  // Fetch appraisal groups
   const { data: groups = [], isLoading } = useQuery<AppraisalGroupWithMembers[]>({
     queryKey: ['/api/appraisal-groups'],
   });
 
-  // Fetch questionnaire templates for dropdown
   const { data: questionnaireTemplates = [] } = useQuery<QuestionnaireTemplate[]>({
     queryKey: ['/api/questionnaire-templates'],
   });
 
-  // Fetch frequency calendars for dropdown
   const { data: frequencyCalendars = [] } = useQuery<FrequencyCalendar[]>({
     queryKey: ['/api/frequency-calendars'],
   });
 
-  // Fetch calendar details when a calendar is selected
   const { data: calendarDetails = [], isLoading: isLoadingDetails } = useQuery<FrequencyCalendarDetails[]>({
     queryKey: ['/api/frequency-calendars', selectedCalendarId, 'details'],
     queryFn: async () => {
@@ -230,11 +233,24 @@ export default function InitiateAppraisal() {
     enabled: !!selectedCalendarId,
   });
 
-  // Mutation for initiating appraisal
+  const { data: appraisalCycles = [] } = useQuery<AppraisalCycle[]>({
+    queryKey: ['/api/appraisal-cycles'],
+  });
+
+  const { data: functionalAreas = [] } = useQuery<FunctionalArea[]>({
+    queryKey: ['/api/functional-areas'],
+  });
+
+  const { data: kraList = [] } = useQuery<KraWithKpis[]>({
+    queryKey: ['/api/kras'],
+  });
+
+  const { data: reviewFrequencies = [] } = useQuery<ReviewFrequency[]>({
+    queryKey: ['/api/review-frequencies-all'],
+  });
+
   const initiateMutation = useMutation({
     mutationFn: async (data: InitiateAppraisalForm & { appraisalGroupId: string }) => {
-      // For now, send as JSON since file upload is not fully implemented
-      // TODO: Implement proper file upload with FormData when needed
       const response = await fetch('/api/initiate-appraisal', {
         method: 'POST',
         headers: {
@@ -260,6 +276,7 @@ export default function InitiateAppraisal() {
       setSelectedGroup(null);
       form.reset();
       setUploadedFile(null);
+      setSelectedKraId(null);
       queryClient.invalidateQueries({ queryKey: ['/api/initiated-appraisals'] });
     },
     onError: (error) => {
@@ -280,9 +297,10 @@ export default function InitiateAppraisal() {
       questionnaireTemplateIds: [],
       selectedCalendarDetailIds: [],
       calendarDetailTimings: [],
+      kpiWeightages: [],
       daysToInitiate: 0,
+      whenField: 'after',
       daysToClose: 30,
-      numberOfReminders: 3,
       excludeTenureLessThanYear: false,
       excludeDojFromDate: undefined,
       excludeDojTillDate: undefined,
@@ -292,59 +310,96 @@ export default function InitiateAppraisal() {
     });
     setUploadedFile(null);
     setSelectedCalendarId(null);
+    setSelectedKraId(null);
   };
 
-  // Handle frequency calendar selection
   const handleCalendarSelection = (calendarId: string) => {
     setSelectedCalendarId(calendarId);
     form.setValue('frequencyCalendarId', calendarId);
-    // Clear selected calendar details and timings when switching calendars
     form.setValue('selectedCalendarDetailIds', []);
     form.setValue('calendarDetailTimings', []);
   };
 
-  // Initialize timing settings for selected calendar details only
-  // Preserves existing timing values for already-selected periods
   const initializeCalendarDetailTimings = (selectedDetailIds: string[]) => {
     const currentTimings = form.getValues('calendarDetailTimings');
     const selectedDetails = calendarDetails.filter(detail => selectedDetailIds.includes(detail.id));
     
     const updatedTimings: CalendarDetailTiming[] = selectedDetails.map(detail => {
-      // Check if timing already exists for this detail
       const existingTiming = currentTimings.find(t => t.detailId === detail.id);
       if (existingTiming) {
-        // Preserve existing configuration
         return existingTiming;
       }
-      // Add new timing with defaults for newly selected detail
       return {
         detailId: detail.id,
         daysToInitiate: 0,
         daysToClose: 30,
-        numberOfReminders: 3,
       };
     });
     
     form.setValue('calendarDetailTimings', updatedTimings);
   };
 
-  // Handle calendar detail selection changes
   const handleCalendarDetailSelection = (selectedIds: string[]) => {
     form.setValue('selectedCalendarDetailIds', selectedIds);
     initializeCalendarDetailTimings(selectedIds);
   };
 
-  // Watch for changes in selected calendar detail IDs
+  const handleKraSelection = (kraId: string) => {
+    setSelectedKraId(kraId);
+    form.setValue('kraId', kraId);
+    const selectedKra = kraList.find(k => k.id === kraId);
+    if (selectedKra && selectedKra.kpis) {
+      const weightages = selectedKra.kpis.map(kpi => ({
+        kpiId: kpi.id,
+        weightage: kpi.weightageContribution || 0,
+      }));
+      form.setValue('kpiWeightages', weightages);
+    } else {
+      form.setValue('kpiWeightages', []);
+    }
+  };
+
   const selectedCalendarDetailIds = form.watch('selectedCalendarDetailIds');
+  const appraisalType = form.watch('appraisalType');
+  const whenField = form.watch('whenField');
+  const kpiWeightages = form.watch('kpiWeightages');
+
+  const selectedKra = kraList.find(k => k.id === selectedKraId);
+  const totalWeightage = kpiWeightages.reduce((sum, w) => sum + (Number(w.weightage) || 0), 0);
+  const isWeightageValid = appraisalType !== 'kpi_based' || !selectedKra || totalWeightage === 100;
+
+  const getReviewFrequencyName = (id: string | null | undefined) => {
+    if (!id) return "Not set";
+    const freq = reviewFrequencies.find(f => f.id === id);
+    return freq ? `${freq.code} - ${freq.description}` : "Unknown";
+  };
 
   const onSubmit = (data: InitiateAppraisalForm) => {
     if (!selectedGroup) return;
     
-    initiateMutation.mutate({
+    if (data.appraisalType === 'kpi_based' && !isWeightageValid) {
+      toast({
+        title: "Validation Error",
+        description: "KPI weightages must total 100%",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const submissionData: any = {
       ...data,
       appraisalGroupId: selectedGroup.id,
-      documentFile: uploadedFile,
-    });
+    };
+
+    if (data.appraisalType !== 'kpi_based') {
+      delete submissionData.appraisalCycleId;
+      delete submissionData.functionalAreaId;
+      delete submissionData.kraId;
+      delete submissionData.kpiWeightages;
+      submissionData.documentFile = uploadedFile;
+    }
+    
+    initiateMutation.mutate(submissionData);
   };
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -360,13 +415,12 @@ export default function InitiateAppraisal() {
     form.setValue('documentFile', undefined);
   };
 
-  const appraisalType = form.watch('appraisalType');
-
-  // Filter groups based on search query
   const filteredGroups = groups.filter(group =>
     group.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     (group.description || "").toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const whenLabel = whenField === 'before' ? 'Days before calendar period end' : 'Days after calendar period end';
 
   return (
     <RoleGuard allowedRoles={['hr_manager']}>
@@ -380,7 +434,6 @@ export default function InitiateAppraisal() {
           </div>
         </div>
 
-        {/* Search Bar */}
         <div className="flex gap-4 mb-6">
           <div className="flex-1">
             <Input
@@ -393,7 +446,6 @@ export default function InitiateAppraisal() {
           </div>
         </div>
 
-        {/* Appraisal Groups List */}
         {isLoading ? (
           <div className="flex items-center justify-center h-48">
             <div className="text-muted-foreground">Loading appraisal groups...</div>
@@ -459,7 +511,6 @@ export default function InitiateAppraisal() {
                     </div>
                   </div>
                   
-                  {/* Member Preview */}
                   {group.members.length > 0 && (
                     <div className="mt-4 pt-4 border-t border-border">
                       <div className="flex items-center gap-2 mb-2">
@@ -486,7 +537,6 @@ export default function InitiateAppraisal() {
           </div>
         )}
 
-        {/* Initiate Appraisal Form Dialog */}
         <Dialog open={isInitiateFormOpen} onOpenChange={setIsInitiateFormOpen}>
           <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
@@ -502,7 +552,6 @@ export default function InitiateAppraisal() {
             {selectedGroup && (
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-                  {/* Read-only Group Info */}
                   <div className="bg-muted/50 p-4 rounded-lg">
                     <h4 className="font-semibold mb-2">Selected Appraisal Group</h4>
                     <div className="flex items-center gap-4">
@@ -518,7 +567,6 @@ export default function InitiateAppraisal() {
 
                   <Separator />
 
-                  {/* Appraisal Type Selection */}
                   <div className="space-y-4">
                     <h4 className="text-lg font-semibold">Appraisal Configuration</h4>
                     
@@ -528,7 +576,16 @@ export default function InitiateAppraisal() {
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Appraisal Type*</FormLabel>
-                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <Select onValueChange={(val) => {
+                            field.onChange(val);
+                            if (val !== 'kpi_based') {
+                              setSelectedKraId(null);
+                              form.setValue('appraisalCycleId', undefined);
+                              form.setValue('functionalAreaId', undefined);
+                              form.setValue('kraId', undefined);
+                              form.setValue('kpiWeightages', []);
+                            }
+                          }} defaultValue={field.value}>
                             <FormControl>
                               <SelectTrigger data-testid="select-appraisal-type">
                                 <SelectValue placeholder="Select appraisal type" />
@@ -549,7 +606,6 @@ export default function InitiateAppraisal() {
                       )}
                     />
 
-                    {/* Questionnaire Template Selection (for questionnaire_based and mbo_based/360 feedback) */}
                     {(appraisalType === 'questionnaire_based' || appraisalType === 'mbo_based') && (
                       <FormField
                         control={form.control}
@@ -578,8 +634,167 @@ export default function InitiateAppraisal() {
                       />
                     )}
 
-                    {/* Document Upload (for KPI based only) */}
                     {appraisalType === 'kpi_based' && (
+                      <div className="space-y-4">
+                        <FormField
+                          control={form.control}
+                          name="appraisalCycleId"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Appraisal Cycle*</FormLabel>
+                              <Select onValueChange={field.onChange} value={field.value || ""}>
+                                <FormControl>
+                                  <SelectTrigger data-testid="select-appraisal-cycle">
+                                    <SelectValue placeholder="Select appraisal cycle" />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  {appraisalCycles.map((cycle) => (
+                                    <SelectItem key={cycle.id} value={cycle.id}>
+                                      {cycle.code} - {cycle.description}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <FormDescription>
+                                Select the appraisal cycle for this KPI-based appraisal
+                              </FormDescription>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        <FormField
+                          control={form.control}
+                          name="functionalAreaId"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Functional Area</FormLabel>
+                              <Select onValueChange={field.onChange} value={field.value || ""}>
+                                <FormControl>
+                                  <SelectTrigger data-testid="select-functional-area">
+                                    <SelectValue placeholder="Select functional area" />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  {functionalAreas.map((area) => (
+                                    <SelectItem key={area.id} value={area.id}>
+                                      {area.code} - {area.description}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <FormDescription>
+                                Select the functional area
+                              </FormDescription>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        <FormField
+                          control={form.control}
+                          name="kraId"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>KRA / Goal*</FormLabel>
+                              <Select onValueChange={(val) => {
+                                field.onChange(val);
+                                handleKraSelection(val);
+                              }} value={field.value || ""}>
+                                <FormControl>
+                                  <SelectTrigger data-testid="select-kra">
+                                    <SelectValue placeholder="Select KRA / Goal" />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  {kraList.map((kra) => (
+                                    <SelectItem key={kra.id} value={kra.id}>
+                                      {kra.code} - {kra.displayName}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <FormDescription>
+                                Select the KRA / Goal for this appraisal
+                              </FormDescription>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        {selectedKra && (
+                          <div className="space-y-4">
+                            <div className="bg-muted/50 p-4 rounded-lg">
+                              <div className="flex items-center gap-2 mb-2">
+                                <Info className="h-4 w-4 text-blue-500" />
+                                <span className="text-sm font-medium">Review Frequency: {getReviewFrequencyName(selectedKra.reviewFrequencyId)}</span>
+                              </div>
+                            </div>
+
+                            {selectedKra.kpis && selectedKra.kpis.length > 0 && (
+                              <div className="space-y-3">
+                                <h5 className="text-md font-medium">KPIs & Weightage Configuration</h5>
+                                <div className="border rounded-md overflow-hidden">
+                                  <table className="w-full text-sm">
+                                    <thead className="bg-muted">
+                                      <tr>
+                                        <th className="px-3 py-2 text-left font-medium">Code</th>
+                                        <th className="px-3 py-2 text-left font-medium">Name</th>
+                                        <th className="px-3 py-2 text-left font-medium">Input Type</th>
+                                        <th className="px-3 py-2 text-left font-medium">Default Weightage</th>
+                                        <th className="px-3 py-2 text-left font-medium">Weightage (%)*</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {selectedKra.kpis.map((kpi, idx) => {
+                                        const weightageEntry = kpiWeightages.find(w => w.kpiId === kpi.id);
+                                        return (
+                                          <tr key={kpi.id} className="border-t">
+                                            <td className="px-3 py-2">{kpi.code}</td>
+                                            <td className="px-3 py-2">{kpi.name}</td>
+                                            <td className="px-3 py-2 capitalize">{kpi.inputType}</td>
+                                            <td className="px-3 py-2">{kpi.weightageContribution}%</td>
+                                            <td className="px-3 py-2">
+                                              <Input
+                                                type="number"
+                                                min="0"
+                                                max="100"
+                                                className="w-20"
+                                                value={weightageEntry?.weightage ?? 0}
+                                                onChange={(e) => {
+                                                  const newWeightages = [...kpiWeightages];
+                                                  const existingIdx = newWeightages.findIndex(w => w.kpiId === kpi.id);
+                                                  if (existingIdx >= 0) {
+                                                    newWeightages[existingIdx] = { ...newWeightages[existingIdx], weightage: Number(e.target.value) || 0 };
+                                                  } else {
+                                                    newWeightages.push({ kpiId: kpi.id, weightage: Number(e.target.value) || 0 });
+                                                  }
+                                                  form.setValue('kpiWeightages', newWeightages);
+                                                }}
+                                                data-testid={`kpi-weightage-${kpi.id}`}
+                                              />
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                                <div className={`flex items-center gap-2 text-sm ${totalWeightage === 100 ? 'text-green-600' : 'text-red-600'}`}>
+                                  <span className="font-medium">Total Weightage: {totalWeightage}%</span>
+                                  {totalWeightage !== 100 && (
+                                    <span>(Must equal 100%)</span>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {appraisalType === 'okr_based' && (
                       <div className="space-y-2">
                         <Label>Upload Document*</Label>
                         <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6">
@@ -606,7 +821,7 @@ export default function InitiateAppraisal() {
                             <div className="text-center">
                               <Upload className="h-10 w-10 text-muted-foreground mx-auto mb-2" />
                               <p className="text-muted-foreground mb-2">
-                                Upload {appraisalType === 'kpi_based' ? 'KPI' : 'MBO'} document
+                                Upload OKR document
                               </p>
                               <input
                                 type="file"
@@ -633,226 +848,224 @@ export default function InitiateAppraisal() {
 
                   <Separator />
 
-                  {/* Schedule & Timing Configuration */}
                   <div className="space-y-4">
                     <h4 className="text-lg font-semibold">Schedule & Timing</h4>
                     
-                    <FormField
-                      control={form.control}
-                      name="frequencyCalendarId"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Frequency Calendar</FormLabel>
-                          <Select 
-                            onValueChange={(value) => {
-                              field.onChange(value);
-                              handleCalendarSelection(value);
-                            }} 
-                            value={field.value}
-                          >
-                            <FormControl>
-                              <SelectTrigger data-testid="select-frequency-calendar">
-                                <SelectValue placeholder="Select frequency calendar (optional)" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {frequencyCalendars.map((calendar) => (
-                                <SelectItem key={calendar.id} value={calendar.id}>
-                                  {calendar.code} - {calendar.description}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <FormDescription>
-                            Optional: Link to a frequency calendar for automated scheduling
-                          </FormDescription>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    {/* Show calendar details selection when a calendar is selected */}
-                    {selectedCalendarId && (
-                      <div className="space-y-4">
-                        <div className="flex items-center justify-between">
-                          <h5 className="text-md font-medium">Select Calendar Periods</h5>
-                          {isLoadingDetails && (
-                            <div className="text-sm text-muted-foreground">Loading details...</div>
-                          )}
+                    {appraisalType === 'kpi_based' ? (
+                      <div className="bg-muted/50 p-4 rounded-lg">
+                        <div className="flex items-center gap-2">
+                          <Calendar className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-sm font-medium">Frequency Calendar: As per Review Frequency of KRA / Goal</span>
                         </div>
-                        
-                        {calendarDetails.length > 0 && (
+                      </div>
+                    ) : (
+                      <>
+                        <FormField
+                          control={form.control}
+                          name="frequencyCalendarId"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Frequency Calendar</FormLabel>
+                              <Select 
+                                onValueChange={(value) => {
+                                  field.onChange(value);
+                                  handleCalendarSelection(value);
+                                }} 
+                                value={field.value}
+                              >
+                                <FormControl>
+                                  <SelectTrigger data-testid="select-frequency-calendar">
+                                    <SelectValue placeholder="Select frequency calendar (optional)" />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  {frequencyCalendars.map((calendar) => (
+                                    <SelectItem key={calendar.id} value={calendar.id}>
+                                      {calendar.code} - {calendar.description}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <FormDescription>
+                                Optional: Link to a frequency calendar for automated scheduling
+                              </FormDescription>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        {selectedCalendarId && (
                           <div className="space-y-4">
-                            {/* Multi-select for calendar details */}
-                            <FormField
-                              control={form.control}
-                              name="selectedCalendarDetailIds"
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Frequency Calendar Details*</FormLabel>
-                                  <FormControl>
-                                    <MultiSelect
-                                      options={calendarDetails.map(detail => {
-                                        // Format dates properly to avoid timezone issues
-                                        const formatDate = (dateValue: any) => {
-                                          // First convert to Date object if it's a string
-                                          const date = dateValue instanceof Date ? dateValue : new Date(dateValue);
-                                          // Then extract LOCAL date components
-                                          return new Date(
-                                            date.getFullYear(),
-                                            date.getMonth(),
-                                            date.getDate()
-                                          ).toLocaleDateString();
-                                        };
-                                        
-                                        return {
-                                          value: detail.id,
-                                          label: `${detail.displayName} (${formatDate(detail.startDate)} - ${formatDate(detail.endDate)})`
-                                        };
-                                      })}
-                                      value={field.value || []}
-                                      onChange={handleCalendarDetailSelection}
-                                      placeholder="Select calendar periods..."
-                                      testId="select-calendar-details"
-                                    />
-                                  </FormControl>
-                                  <FormDescription>
-                                    Choose one or more calendar periods for this appraisal cycle
-                                  </FormDescription>
-                                  <FormMessage />
-                                </FormItem>
+                            <div className="flex items-center justify-between">
+                              <h5 className="text-md font-medium">Select Calendar Periods</h5>
+                              {isLoadingDetails && (
+                                <div className="text-sm text-muted-foreground">Loading details...</div>
                               )}
-                            />
-
-                            {/* Show timing configuration for selected calendar details */}
-                            {selectedCalendarDetailIds.length > 0 && (
+                            </div>
+                            
+                            {calendarDetails.length > 0 && (
                               <div className="space-y-4">
-                                <p className="text-sm text-muted-foreground">
-                                  Configure timing settings for selected calendar periods:
-                                </p>
-                                
-                                {calendarDetails
-                                  .filter(detail => selectedCalendarDetailIds.includes(detail.id))
-                                  .map((detail) => {
-                                    const timingIndex = form.getValues('calendarDetailTimings').findIndex(t => t.detailId === detail.id);
-                                    if (timingIndex === -1) return null;
-                                    return (
-                                      <Card key={detail.id} className="p-4">
-                                        <div className="flex items-center justify-between mb-3">
-                                          <div>
-                                            <h6 className="font-medium">{detail.displayName}</h6>
-                                            <p className="text-sm text-muted-foreground">
-                                              {(() => {
-                                                const formatDate = (dateValue: any) => {
-                                                  // First convert to Date object if it's a string
-                                                  const date = dateValue instanceof Date ? dateValue : new Date(dateValue);
-                                                  // Then extract LOCAL date components
-                                                  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).toLocaleDateString();
-                                                };
-                                                return `${formatDate(detail.startDate)} - ${formatDate(detail.endDate)}`;
-                                              })()}
-                                            </p>
-                                          </div>
-                                        </div>
-                                        
-                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                          <FormField
-                                            control={form.control}
-                                            name={`calendarDetailTimings.${timingIndex}.daysToInitiate`}
-                                            render={({ field }) => (
-                                              <FormItem>
-                                                <FormLabel>Days to Initiate</FormLabel>
-                                                <FormControl>
-                                                  <Input
-                                                    type="number"
-                                                    min="0"
-                                                    max="365"
-                                                    placeholder="0"
-                                                    {...field}
-                                                    data-testid={`input-days-to-initiate-${detail.id}`}
-                                                  />
-                                                </FormControl>
-                                                <FormDescription>
-                                                  Days after calendar period end
-                                                </FormDescription>
-                                                <FormMessage />
-                                              </FormItem>
-                                            )}
-                                          />
+                                <FormField
+                                  control={form.control}
+                                  name="selectedCalendarDetailIds"
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormLabel>Frequency Calendar Details*</FormLabel>
+                                      <FormControl>
+                                        <MultiSelect
+                                          options={calendarDetails.map(detail => {
+                                            const formatDate = (dateValue: any) => {
+                                              const date = dateValue instanceof Date ? dateValue : new Date(dateValue);
+                                              return new Date(
+                                                date.getFullYear(),
+                                                date.getMonth(),
+                                                date.getDate()
+                                              ).toLocaleDateString();
+                                            };
+                                            
+                                            return {
+                                              value: detail.id,
+                                              label: `${detail.displayName} (${formatDate(detail.startDate)} - ${formatDate(detail.endDate)})`
+                                            };
+                                          })}
+                                          value={field.value || []}
+                                          onChange={handleCalendarDetailSelection}
+                                          placeholder="Select calendar periods..."
+                                          testId="select-calendar-details"
+                                        />
+                                      </FormControl>
+                                      <FormDescription>
+                                        Choose one or more calendar periods for this appraisal cycle
+                                      </FormDescription>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )}
+                                />
 
-                                          <FormField
-                                            control={form.control}
-                                            name={`calendarDetailTimings.${timingIndex}.daysToClose`}
-                                            render={({ field }) => (
-                                              <FormItem>
-                                                <FormLabel>Days to Close*</FormLabel>
-                                                <FormControl>
-                                                  <Input
-                                                    type="number"
-                                                    min="1"
-                                                    max="365"
-                                                    placeholder="30"
-                                                    {...field}
-                                                    data-testid={`input-days-to-close-${detail.id}`}
-                                                  />
-                                                </FormControl>
-                                                <FormDescription>
-                                                  Days after calendar period end
-                                                </FormDescription>
-                                                <FormMessage />
-                                              </FormItem>
-                                            )}
-                                          />
+                                {selectedCalendarDetailIds.length > 0 && (
+                                  <div className="space-y-4">
+                                    <p className="text-sm text-muted-foreground">
+                                      Configure timing settings for selected calendar periods:
+                                    </p>
+                                    
+                                    {calendarDetails
+                                      .filter(detail => selectedCalendarDetailIds.includes(detail.id))
+                                      .map((detail) => {
+                                        const timingIndex = form.getValues('calendarDetailTimings').findIndex(t => t.detailId === detail.id);
+                                        if (timingIndex === -1) return null;
+                                        return (
+                                          <Card key={detail.id} className="p-4">
+                                            <div className="flex items-center justify-between mb-3">
+                                              <div>
+                                                <h6 className="font-medium">{detail.displayName}</h6>
+                                                <p className="text-sm text-muted-foreground">
+                                                  {(() => {
+                                                    const formatDate = (dateValue: any) => {
+                                                      const date = dateValue instanceof Date ? dateValue : new Date(dateValue);
+                                                      return new Date(date.getFullYear(), date.getMonth(), date.getDate()).toLocaleDateString();
+                                                    };
+                                                    return `${formatDate(detail.startDate)} - ${formatDate(detail.endDate)}`;
+                                                  })()}
+                                                </p>
+                                              </div>
+                                            </div>
+                                            
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                              <FormField
+                                                control={form.control}
+                                                name={`calendarDetailTimings.${timingIndex}.daysToInitiate`}
+                                                render={({ field }) => (
+                                                  <FormItem>
+                                                    <FormLabel>Days to Initiate</FormLabel>
+                                                    <FormControl>
+                                                      <Input
+                                                        type="number"
+                                                        min="0"
+                                                        max="365"
+                                                        placeholder="0"
+                                                        {...field}
+                                                        data-testid={`input-days-to-initiate-${detail.id}`}
+                                                      />
+                                                    </FormControl>
+                                                    <FormDescription>
+                                                      {whenLabel}
+                                                    </FormDescription>
+                                                    <FormMessage />
+                                                  </FormItem>
+                                                )}
+                                              />
 
-                                          <FormField
-                                            control={form.control}
-                                            name={`calendarDetailTimings.${timingIndex}.numberOfReminders`}
-                                            render={({ field }) => (
-                                              <FormItem>
-                                                <FormLabel>Number of Reminders</FormLabel>
-                                                <Select onValueChange={field.onChange} value={field.value?.toString()}>
-                                                  <FormControl>
-                                                    <SelectTrigger data-testid={`select-reminders-${detail.id}`}>
-                                                      <SelectValue placeholder="Select" />
-                                                    </SelectTrigger>
-                                                  </FormControl>
-                                                  <SelectContent>
-                                                    {Array.from({length: 10}, (_, i) => i + 1).map((num) => (
-                                                      <SelectItem key={num} value={num.toString()}>
-                                                        {num} reminder{num > 1 ? 's' : ''}
-                                                      </SelectItem>
-                                                    ))}
-                                                  </SelectContent>
-                                                </Select>
-                                                <FormDescription>
-                                                  Automatic reminders (1-10)
-                                                </FormDescription>
-                                                <FormMessage />
-                                              </FormItem>
-                                            )}
-                                          />
-                                        </div>
-                                      </Card>
-                                    );
-                                  })}
+                                              <FormField
+                                                control={form.control}
+                                                name="whenField"
+                                                render={({ field: whenFieldControl }) => (
+                                                  <FormItem>
+                                                    <FormLabel>When</FormLabel>
+                                                    <Select onValueChange={whenFieldControl.onChange} value={whenFieldControl.value}>
+                                                      <FormControl>
+                                                        <SelectTrigger data-testid={`select-when-${detail.id}`}>
+                                                          <SelectValue placeholder="Select" />
+                                                        </SelectTrigger>
+                                                      </FormControl>
+                                                      <SelectContent>
+                                                        <SelectItem value="after">After</SelectItem>
+                                                        <SelectItem value="before">Before</SelectItem>
+                                                      </SelectContent>
+                                                    </Select>
+                                                    <FormDescription>
+                                                      Before or after period end
+                                                    </FormDescription>
+                                                    <FormMessage />
+                                                  </FormItem>
+                                                )}
+                                              />
+
+                                              <FormField
+                                                control={form.control}
+                                                name={`calendarDetailTimings.${timingIndex}.daysToClose`}
+                                                render={({ field }) => (
+                                                  <FormItem>
+                                                    <FormLabel>Days to Close*</FormLabel>
+                                                    <FormControl>
+                                                      <Input
+                                                        type="number"
+                                                        min="1"
+                                                        max="365"
+                                                        placeholder="30"
+                                                        {...field}
+                                                        data-testid={`input-days-to-close-${detail.id}`}
+                                                      />
+                                                    </FormControl>
+                                                    <FormDescription>
+                                                      Days after initiation to close
+                                                    </FormDescription>
+                                                    <FormMessage />
+                                                  </FormItem>
+                                                )}
+                                              />
+                                            </div>
+                                          </Card>
+                                        );
+                                      })}
+                                  </div>
+                                )}
                               </div>
+                            )}
+                            
+                            {calendarDetails.length === 0 && !isLoadingDetails && (
+                              <Card className="p-6">
+                                <div className="text-center text-muted-foreground">
+                                  <Calendar className="h-8 w-8 mx-auto mb-2" />
+                                  <p>No calendar details found for this frequency calendar.</p>
+                                </div>
+                              </Card>
                             )}
                           </div>
                         )}
-                        
-                        {calendarDetails.length === 0 && !isLoadingDetails && (
-                          <Card className="p-6">
-                            <div className="text-center text-muted-foreground">
-                              <Calendar className="h-8 w-8 mx-auto mb-2" />
-                              <p>No calendar details found for this frequency calendar.</p>
-                            </div>
-                          </Card>
-                        )}
-                      </div>
+                      </>
                     )}
 
-                    {/* Show global timing settings when no calendar is selected */}
-                    {!selectedCalendarId && (
+                    {!selectedCalendarId && appraisalType !== 'kpi_based' && (
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <FormField
                           control={form.control}
@@ -872,7 +1085,32 @@ export default function InitiateAppraisal() {
                                 />
                               </FormControl>
                               <FormDescription>
-                                Days after calendar period end
+                                {whenLabel}
+                              </FormDescription>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        <FormField
+                          control={form.control}
+                          name="whenField"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>When</FormLabel>
+                              <Select onValueChange={field.onChange} value={field.value}>
+                                <FormControl>
+                                  <SelectTrigger data-testid="select-when">
+                                    <SelectValue placeholder="Select" />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  <SelectItem value="after">After</SelectItem>
+                                  <SelectItem value="before">Before</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <FormDescription>
+                                Before or after period end
                               </FormDescription>
                               <FormMessage />
                             </FormItem>
@@ -903,29 +1141,80 @@ export default function InitiateAppraisal() {
                             </FormItem>
                           )}
                         />
+                      </div>
+                    )}
+
+                    {appraisalType === 'kpi_based' && (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <FormField
+                          control={form.control}
+                          name="daysToInitiate"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Days to Initiate</FormLabel>
+                              <FormControl>
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  max="365"
+                                  placeholder="0"
+                                  value={field.value || 0}
+                                  onChange={(e) => field.onChange(Number(e.target.value))}
+                                  data-testid="input-days-to-initiate"
+                                />
+                              </FormControl>
+                              <FormDescription>
+                                {whenLabel}
+                              </FormDescription>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
 
                         <FormField
                           control={form.control}
-                          name="numberOfReminders"
+                          name="whenField"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Number of Reminders</FormLabel>
-                              <Select onValueChange={field.onChange} value={field.value?.toString()}>
+                              <FormLabel>When</FormLabel>
+                              <Select onValueChange={field.onChange} value={field.value}>
                                 <FormControl>
-                                  <SelectTrigger data-testid="select-number-of-reminders">
-                                    <SelectValue placeholder="3" />
+                                  <SelectTrigger data-testid="select-when">
+                                    <SelectValue placeholder="Select" />
                                   </SelectTrigger>
                                 </FormControl>
                                 <SelectContent>
-                                  {Array.from({length: 10}, (_, i) => i + 1).map((num) => (
-                                    <SelectItem key={num} value={num.toString()}>
-                                      {num} reminder{num > 1 ? 's' : ''}
-                                    </SelectItem>
-                                  ))}
+                                  <SelectItem value="after">After</SelectItem>
+                                  <SelectItem value="before">Before</SelectItem>
                                 </SelectContent>
                               </Select>
                               <FormDescription>
-                                Automatic reminders (1-10)
+                                Before or after period end
+                              </FormDescription>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        <FormField
+                          control={form.control}
+                          name="daysToClose"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Days to Close*</FormLabel>
+                              <FormControl>
+                                <Input
+                                  type="number"
+                                  min="1"
+                                  max="365"
+                                  placeholder="30"
+                                  value={field.value || 30}
+                                  onChange={(e) => field.onChange(Number(e.target.value))}
+                                  data-testid="input-days-to-close"
+                                />
+                              </FormControl>
+                              <FormDescription>
+                                Days after initiation to close
                               </FormDescription>
                               <FormMessage />
                             </FormItem>
@@ -937,7 +1226,6 @@ export default function InitiateAppraisal() {
 
                   <Separator />
 
-                  {/* Employee Exclusions */}
                   <div className="space-y-4">
                     <h4 className="text-lg font-semibold">Employee Exclusions</h4>
                     
@@ -965,7 +1253,6 @@ export default function InitiateAppraisal() {
                       )}
                     />
 
-                    {/* DOJ Date Range Filters */}
                     <div className="space-y-2">
                       <Label>Exclude by Date of Joining (DOJ)</Label>
                       <p className="text-sm text-muted-foreground">
@@ -1045,7 +1332,6 @@ export default function InitiateAppraisal() {
                       </div>
                     </div>
 
-                    {/* Individual Employee Exclusions */}
                     <div className="space-y-2">
                       <Label>Exclude Specific Employees</Label>
                       <p className="text-sm text-muted-foreground">
@@ -1058,7 +1344,6 @@ export default function InitiateAppraisal() {
                             const dojFromDate = form.watch('excludeDojFromDate');
                             const dojTillDate = form.watch('excludeDojTillDate');
                             
-                            // Filter by DOJ From Date
                             if (dojFromDate) {
                               if (!member.dateOfJoining) return false;
                               const memberDoj = new Date(member.dateOfJoining);
@@ -1068,7 +1353,6 @@ export default function InitiateAppraisal() {
                               if (memberDoj < fromDate) return false;
                             }
                             
-                            // Filter by DOJ Till Date
                             if (dojTillDate) {
                               if (!member.dateOfJoining) return false;
                               const memberDoj = new Date(member.dateOfJoining);
@@ -1107,7 +1391,6 @@ export default function InitiateAppraisal() {
                     </div>
                   </div>
 
-                  {/* Publish Options */}
                   <div className="space-y-4">
                     <h4 className="text-lg font-semibold">Publish Options</h4>
                     
@@ -1152,8 +1435,7 @@ export default function InitiateAppraisal() {
                       )}
                     />
 
-                    {/* Info message for calendar-based publishing */}
-                    {form.watch('publishType') === 'as_per_calendar' && selectedCalendarDetailIds.length > 0 && (
+                    {form.watch('publishType') === 'as_per_calendar' && appraisalType !== 'kpi_based' && selectedCalendarDetailIds.length > 0 && (
                       <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
                         <p className="text-sm text-blue-800 dark:text-blue-200">
                           <strong>Scheduled Publishing:</strong> The appraisal will be published to employees based on each selected calendar period's end date plus the configured "Days to Initiate" value.
@@ -1162,29 +1444,70 @@ export default function InitiateAppraisal() {
                           const detail = calendarDetails.find(d => d.id === timing.detailId);
                           if (!detail) return null;
                           
-                          // Calculate scheduled date: end date + daysToInitiate
-                          // First convert to Date object if needed, then extract local components
                           const endDateValue = detail.endDate;
                           const tempDate = endDateValue instanceof Date ? endDateValue : new Date(endDateValue);
-                          // Extract LOCAL date components to preserve the intended date
                           const endDate = new Date(
                             tempDate.getFullYear(),
                             tempDate.getMonth(),
                             tempDate.getDate()
                           );
                           
-                          const daysToAdd = Number(timing.daysToInitiate) || 0;
-                          
-                          // Create scheduled date by adding days
+                          const daysValue = Number(timing.daysToInitiate) || 0;
                           const scheduledDate = new Date(endDate);
-                          scheduledDate.setDate(scheduledDate.getDate() + daysToAdd);
+                          if (whenField === 'before') {
+                            scheduledDate.setDate(scheduledDate.getDate() - daysValue);
+                          } else {
+                            scheduledDate.setDate(scheduledDate.getDate() + daysValue);
+                          }
                           
                           return (
                             <p key={timing.detailId} className="text-sm text-blue-700 dark:text-blue-300 mt-2">
-                              • {detail.displayName}: Will be published on <strong>{scheduledDate.toLocaleDateString()}</strong> ({endDate.toLocaleDateString()} + {daysToAdd} {daysToAdd === 1 ? 'day' : 'days'})
+                              • {detail.displayName}: Will be published on <strong>{scheduledDate.toLocaleDateString()}</strong> ({endDate.toLocaleDateString()} {whenField === 'before' ? '-' : '+'} {daysValue} {daysValue === 1 ? 'day' : 'days'})
                             </p>
                           );
                         })}
+                      </div>
+                    )}
+
+                    {form.watch('publishType') === 'as_per_calendar' && appraisalType === 'kpi_based' && selectedKra && selectedKra.reviewFrequencyId && (
+                      <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                        <p className="text-sm text-blue-800 dark:text-blue-200">
+                          <strong>Scheduled Publishing (KPI Based):</strong> The appraisal will be published based on the review frequency of the selected KRA / Goal.
+                        </p>
+                        {(() => {
+                          const freq = reviewFrequencies.find(f => f.id === selectedKra.reviewFrequencyId);
+                          const freqDesc = freq ? freq.description : 'Unknown';
+                          const daysValue = Number(form.getValues('daysToInitiate')) || 0;
+                          
+                          let exampleEndDate = new Date();
+                          const freqCode = freq?.code?.toLowerCase() || '';
+                          if (freqCode.includes('month')) {
+                            exampleEndDate = new Date(exampleEndDate.getFullYear(), exampleEndDate.getMonth() + 1, 0);
+                          } else if (freqCode.includes('quarter')) {
+                            const currentQuarter = Math.floor(exampleEndDate.getMonth() / 3);
+                            exampleEndDate = new Date(exampleEndDate.getFullYear(), (currentQuarter + 1) * 3, 0);
+                          } else if (freqCode.includes('half') || freqCode.includes('semi')) {
+                            const currentHalf = exampleEndDate.getMonth() < 6 ? 0 : 1;
+                            exampleEndDate = new Date(exampleEndDate.getFullYear(), (currentHalf + 1) * 6, 0);
+                          } else if (freqCode.includes('annual') || freqCode.includes('year')) {
+                            exampleEndDate = new Date(exampleEndDate.getFullYear(), 11, 31);
+                          } else {
+                            exampleEndDate = new Date(exampleEndDate.getFullYear(), exampleEndDate.getMonth() + 1, 0);
+                          }
+
+                          const publishDate = new Date(exampleEndDate);
+                          if (whenField === 'before') {
+                            publishDate.setDate(publishDate.getDate() - daysValue);
+                          } else {
+                            publishDate.setDate(publishDate.getDate() + daysValue);
+                          }
+
+                          return (
+                            <p className="text-sm text-blue-700 dark:text-blue-300 mt-2">
+                              • Example ({freqDesc}): Period ending <strong>{exampleEndDate.toLocaleDateString()}</strong> {whenField === 'before' ? '-' : '+'} {daysValue} {daysValue === 1 ? 'day' : 'days'} = Publish on <strong>{publishDate.toLocaleDateString()}</strong>
+                            </p>
+                          );
+                        })()}
                       </div>
                     )}
                   </div>
@@ -1200,7 +1523,7 @@ export default function InitiateAppraisal() {
                     </Button>
                     <Button
                       type="submit"
-                      disabled={initiateMutation.isPending}
+                      disabled={initiateMutation.isPending || (appraisalType === 'kpi_based' && !isWeightageValid)}
                       data-testid="initiate-submit-btn"
                     >
                       {initiateMutation.isPending ? (
