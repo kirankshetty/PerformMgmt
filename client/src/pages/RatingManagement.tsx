@@ -11,7 +11,7 @@ import { Slider } from "@/components/ui/slider";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { RoleGuard } from "@/components/RoleGuard";
-import { useAuth } from "@/hooks/useAuth";
+
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { Plus, Search, Edit, Trash2, Star, Clock } from "lucide-react";
 import type { Rating, RatingDetail } from "@shared/schema";
@@ -34,9 +34,6 @@ export default function RatingManagement() {
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { user } = useAuth();
-  const activeRole = (user as any)?.activeRole || (user as any)?.role || "employee";
-  const isAdmin = activeRole === "admin";
 
   const { data: ratingsData = [], isLoading } = useQuery<RatingWithDetails[]>({
     queryKey: ["/api/ratings"],
@@ -248,7 +245,7 @@ export default function RatingManagement() {
               value={[formData.ratingScaleTo]}
               onValueChange={(val) => setFormData(prev => ({ ...prev, ratingScaleTo: val[0] }))}
               min={1}
-              max={20}
+              max={10}
               step={1}
               className="w-full"
             />
@@ -343,7 +340,6 @@ export default function RatingManagement() {
               Manage rating scales and definitions for performance evaluations
             </p>
           </div>
-          {isAdmin && (
           <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
             <DialogTrigger asChild>
               <Button onClick={() => resetForm()}>
@@ -361,7 +357,6 @@ export default function RatingManagement() {
               {renderForm()}
             </DialogContent>
           </Dialog>
-          )}
         </div>
 
         <div className="mb-6 flex flex-col sm:flex-row gap-4">
@@ -420,7 +415,6 @@ export default function RatingManagement() {
                         {rating.ratingScaleTo - rating.ratingScaleFrom + 1} rating levels defined
                       </CardDescription>
                     </div>
-                    {isAdmin && (
                     <div className="flex gap-2">
                       <Button
                         variant="outline"
@@ -438,7 +432,6 @@ export default function RatingManagement() {
                         <Trash2 className="w-4 h-4" />
                       </Button>
                     </div>
-                    )}
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -470,7 +463,6 @@ export default function RatingManagement() {
           )}
         </div>
 
-        {isAdmin && (
         <Dialog open={!!editingRating} onOpenChange={(open) => { if (!open) { setEditingRating(null); resetForm(); } }}>
           <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
@@ -482,7 +474,6 @@ export default function RatingManagement() {
             {renderForm()}
           </DialogContent>
         </Dialog>
-        )}
       </div>
     </RoleGuard>
   );

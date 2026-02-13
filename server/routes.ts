@@ -3248,7 +3248,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/ratings', isAuthenticated, requireRoles(['admin']), async (req: any, res) => {
+  app.post('/api/ratings', isAuthenticated, requireRoles(['admin', 'hr_manager']), async (req: any, res) => {
     try {
       const { details, ...ratingData } = req.body;
       const parsedRating = insertRatingSchema.parse(ratingData);
@@ -3276,7 +3276,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put('/api/ratings/:id', isAuthenticated, requireRoles(['admin']), async (req: any, res) => {
+  app.put('/api/ratings/:id', isAuthenticated, requireRoles(['admin', 'hr_manager']), async (req: any, res) => {
     try {
       const { id } = req.params;
       const createdById = req.user.claims.sub;
@@ -3313,7 +3313,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete('/api/ratings/:id', isAuthenticated, requireRoles(['admin']), async (req: any, res) => {
+  app.delete('/api/ratings/:id', isAuthenticated, requireRoles(['admin', 'hr_manager']), async (req: any, res) => {
     try {
       const { id } = req.params;
       const createdById = req.user.claims.sub;
