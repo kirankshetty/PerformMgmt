@@ -3034,7 +3034,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/business-roles', isAuthenticated, requireRoles(['admin']), async (req: any, res) => {
+  app.post('/api/business-roles', isAuthenticated, requireRoles(['admin', 'hr_manager']), async (req: any, res) => {
     try {
       const businessRoleData = insertBusinessRoleSchema.parse(req.body);
       const createdById = req.user.claims.sub;
@@ -3049,7 +3049,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put('/api/business-roles/:id', isAuthenticated, requireRoles(['admin']), async (req: any, res) => {
+  app.put('/api/business-roles/:id', isAuthenticated, requireRoles(['admin', 'hr_manager']), async (req: any, res) => {
     try {
       const { id } = req.params;
       const createdById = req.user.claims.sub;
@@ -3071,7 +3071,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete('/api/business-roles/:id', isAuthenticated, requireRoles(['admin']), async (req: any, res) => {
+  app.delete('/api/business-roles/:id', isAuthenticated, requireRoles(['admin', 'hr_manager']), async (req: any, res) => {
     try {
       const { id } = req.params;
       const createdById = req.user.claims.sub;
@@ -3130,7 +3130,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/functional-areas', isAuthenticated, requireRoles(['admin']), async (req: any, res) => {
+  app.post('/api/functional-areas', isAuthenticated, requireRoles(['admin', 'hr_manager']), async (req: any, res) => {
     try {
       const areaData = insertFunctionalAreaSchema.parse(req.body);
       const createdById = req.user.claims.sub;
@@ -3145,7 +3145,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put('/api/functional-areas/:id', isAuthenticated, requireRoles(['admin']), async (req: any, res) => {
+  app.put('/api/functional-areas/:id', isAuthenticated, requireRoles(['admin', 'hr_manager']), async (req: any, res) => {
     try {
       const { id } = req.params;
       const createdById = req.user.claims.sub;
@@ -3167,7 +3167,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete('/api/functional-areas/:id', isAuthenticated, requireRoles(['admin']), async (req: any, res) => {
+  app.delete('/api/functional-areas/:id', isAuthenticated, requireRoles(['admin', 'hr_manager']), async (req: any, res) => {
     try {
       const { id } = req.params;
       const createdById = req.user.claims.sub;

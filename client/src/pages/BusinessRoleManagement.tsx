@@ -15,13 +15,9 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { RoleGuard } from "@/components/RoleGuard";
 import { isUnauthorizedError } from "@/lib/authUtils";
-import { useAuth } from "@/hooks/useAuth";
 import { Plus, Search, Edit, Trash2, Briefcase, Tag, Clock } from "lucide-react";
 
 export default function BusinessRoleManagement() {
-  const { user } = useAuth();
-  const activeRole = (user as any)?.activeRole || (user as any)?.role || "employee";
-  const isAdmin = activeRole === "admin";
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -158,7 +154,7 @@ export default function BusinessRoleManagement() {
               Manage business roles for employee categorization
             </p>
           </div>
-          {isAdmin && <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
+          <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
             <DialogTrigger asChild>
               <Button onClick={() => resetForm()}>
                 <Plus className="w-4 h-4 mr-2" />
@@ -257,7 +253,7 @@ export default function BusinessRoleManagement() {
                 </form>
               </Form>
             </DialogContent>
-          </Dialog>}
+          </Dialog>
         </div>
 
         <div className="mb-6 flex flex-col sm:flex-row gap-4">
@@ -318,7 +314,7 @@ export default function BusinessRoleManagement() {
                         </CardDescription>
                       )}
                     </div>
-                    {isAdmin && <div className="flex gap-2">
+                    <div className="flex gap-2">
                       <Button 
                         variant="outline" 
                         size="sm"
@@ -334,7 +330,7 @@ export default function BusinessRoleManagement() {
                       >
                         <Trash2 className="w-4 h-4" />
                       </Button>
-                    </div>}
+                    </div>
                   </div>
                 </CardHeader>
                 {br.description && (
