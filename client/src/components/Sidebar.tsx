@@ -28,6 +28,7 @@ import {
   MessageSquare,
   BarChart3,
   Briefcase,
+  Star,
 } from "lucide-react";
 import type { Company } from "@shared/schema";
 
@@ -58,6 +59,7 @@ const navItems: NavItem[] = [
   { href: "/calibrate-ratings", label: "Calibrate Ratings", icon: Award, roles: ["hr_manager"] },
   { href: "/analytics", label: "Analytics", icon: BarChart3, roles: ["hr_manager"] },
   { href: "/business-roles-hr", label: "Business Role", icon: Briefcase, roles: ["hr_manager"] },
+  { href: "/ratings", label: "Ratings", icon: Star, roles: ["admin", "hr_manager"] },
   { href: "/questionnaires", label: "Questionnaires", icon: FileText, roles: ["super_admin", "admin", "hr_manager"] },
   { href: "/evaluations", label: "My Evaluations", icon: ClipboardList, roles: ["employee"] },
   { href: "/manager-submissions", label: "Submissions", icon: ClipboardList, roles: ["manager"] },

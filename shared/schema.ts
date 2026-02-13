@@ -305,6 +305,37 @@ export const businessRoles = pgTable("business_roles", {
   index("business_roles_created_by_id_idx").on(table.createdById),
 ]);
 
+// Rating Type enum
+export const ratingTypeEnum = pgEnum('rating_type', ['numeric', 'text']);
+
+// Rating table - Administrator managed
+export const ratings = pgTable("ratings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ratingType: ratingTypeEnum("rating_type").default('numeric').notNull(),
+  ratingScaleFrom: integer("rating_scale_from").default(1).notNull(),
+  ratingScaleTo: integer("rating_scale_to").default(5).notNull(),
+  status: statusEnum("status").default('active'),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  createdById: varchar("created_by_id").notNull(),
+}, (table) => [
+  index("ratings_created_by_id_idx").on(table.createdById),
+]);
+
+// Rating Details table - child records for each rating scale value
+export const ratingDetails = pgTable("rating_details", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ratingId: varchar("rating_id").notNull(),
+  code: varchar("code").notNull(),
+  name: varchar("name").notNull(),
+  description: text("description"),
+  sortOrder: integer("sort_order").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("rating_details_rating_id_idx").on(table.ratingId),
+]);
+
 // Department table - Administrator managed
 export const departments = pgTable("departments", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -560,6 +591,21 @@ export const gradesRelations = relations(grades, ({ one, many }) => ({
   questionnaires: many(questionnaireTemplates),
 }));
 
+export const ratingsRelations = relations(ratings, ({ one, many }) => ({
+  createdBy: one(users, {
+    fields: [ratings.createdById],
+    references: [users.id],
+  }),
+  details: many(ratingDetails),
+}));
+
+export const ratingDetailsRelations = relations(ratingDetails, ({ one }) => ({
+  rating: one(ratings, {
+    fields: [ratingDetails.ratingId],
+    references: [ratings.id],
+  }),
+}));
+
 export const departmentsRelations = relations(departments, ({ one, many }) => ({
   createdBy: one(users, {
     fields: [departments.createdById],
@@ -760,6 +806,19 @@ export const insertBusinessRoleSchema = createInsertSchema(businessRoles).omit({
   createdById: true,
 });
 
+export const insertRatingSchema = createInsertSchema(ratings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  createdById: true,
+});
+
+export const insertRatingDetailSchema = createInsertSchema(ratingDetails).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 export const insertDepartmentSchema = createInsertSchema(departments).omit({
   id: true,
   createdAt: true,
@@ -882,6 +941,10 @@ export type Grade = typeof grades.$inferSelect;
 export type InsertGrade = z.infer<typeof insertGradeSchema>;
 export type BusinessRole = typeof businessRoles.$inferSelect;
 export type InsertBusinessRole = z.infer<typeof insertBusinessRoleSchema>;
+export type Rating = typeof ratings.$inferSelect;
+export type InsertRating = z.infer<typeof insertRatingSchema>;
+export type RatingDetail = typeof ratingDetails.$inferSelect;
+export type InsertRatingDetail = z.infer<typeof insertRatingDetailSchema>;
 export type Department = typeof departments.$inferSelect;
 export type InsertDepartment = z.infer<typeof insertDepartmentSchema>;
 export type AppraisalCycle = typeof appraisalCycles.$inferSelect;

@@ -13,6 +13,8 @@ import {
   levels,
   grades,
   businessRoles,
+  ratings,
+  ratingDetails,
   departments,
   appraisalCycles,
   reviewFrequencies,
@@ -56,6 +58,10 @@ import {
   type InsertGrade,
   type BusinessRole,
   type InsertBusinessRole,
+  type Rating,
+  type InsertRating,
+  type RatingDetail,
+  type InsertRatingDetail,
   type Department,
   type InsertDepartment,
   type AppraisalCycle,
@@ -205,6 +211,15 @@ export interface IStorage {
   updateGrade(id: string, grade: Partial<InsertGrade>, createdById: string): Promise<Grade>;
   deleteGrade(id: string, createdById: string): Promise<void>;
   
+  // Rating operations - Administrator isolated
+  getRatings(createdById: string): Promise<Rating[]>;
+  getRating(id: string, createdById: string): Promise<Rating | undefined>;
+  getRatingWithDetails(id: string, createdById: string): Promise<{ rating: Rating; details: RatingDetail[] } | undefined>;
+  createRating(rating: InsertRating, details: InsertRatingDetail[], createdById: string): Promise<Rating>;
+  updateRating(id: string, rating: Partial<InsertRating>, details: InsertRatingDetail[], createdById: string): Promise<Rating>;
+  deleteRating(id: string, createdById: string): Promise<void>;
+  getRatingDetails(ratingId: string): Promise<RatingDetail[]>;
+
   // Appraisal Cycle operations - Administrator isolated
   getAppraisalCycles(createdById: string): Promise<AppraisalCycle[]>;
   getAllAppraisalCycles(companyId: string): Promise<AppraisalCycle[]>; // For HR managers to see all cycles in their company
@@ -1562,6 +1577,114 @@ export class DatabaseStorage implements IStorage {
     if (result.rowCount === 0) {
       throw new Error('Business role not found or access denied');
     }
+  }
+
+  // Rating operations - Administrator isolated
+  async getRatings(createdById: string): Promise<Rating[]> {
+    return await db.select().from(ratings).where(
+      eq(ratings.createdById, createdById)
+    ).orderBy(desc(ratings.createdAt));
+  }
+
+  async getRating(id: string, createdById: string): Promise<Rating | undefined> {
+    const [rating] = await db.select().from(ratings).where(
+      and(
+        eq(ratings.id, id),
+        eq(ratings.createdById, createdById)
+      )
+    );
+    return rating;
+  }
+
+  async getRatingWithDetails(id: string, createdById: string): Promise<{ rating: Rating; details: RatingDetail[] } | undefined> {
+    const rating = await this.getRating(id, createdById);
+    if (!rating) return undefined;
+    const details = await db.select().from(ratingDetails).where(
+      eq(ratingDetails.ratingId, id)
+    ).orderBy(asc(ratingDetails.sortOrder));
+    return { rating, details };
+  }
+
+  async createRating(ratingData: InsertRating, details: InsertRatingDetail[], createdById: string): Promise<Rating> {
+    const [newRating] = await db.insert(ratings).values({
+      ...ratingData,
+      createdById,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }).returning();
+
+    if (details.length > 0) {
+      await db.insert(ratingDetails).values(
+        details.map((detail, index) => ({
+          ...detail,
+          ratingId: newRating.id,
+          sortOrder: index + 1,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }))
+      );
+    }
+
+    return newRating;
+  }
+
+  async updateRating(id: string, ratingData: Partial<InsertRating>, details: InsertRatingDetail[], createdById: string): Promise<Rating> {
+    const [updatedRating] = await db
+      .update(ratings)
+      .set({
+        ...ratingData,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(ratings.id, id),
+          eq(ratings.createdById, createdById)
+        )
+      )
+      .returning();
+
+    if (!updatedRating) {
+      throw new Error('Rating not found or access denied');
+    }
+
+    await db.delete(ratingDetails).where(eq(ratingDetails.ratingId, id));
+
+    if (details.length > 0) {
+      await db.insert(ratingDetails).values(
+        details.map((detail, index) => ({
+          ...detail,
+          ratingId: id,
+          sortOrder: index + 1,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }))
+      );
+    }
+
+    return updatedRating;
+  }
+
+  async deleteRating(id: string, createdById: string): Promise<void> {
+    await db.delete(ratingDetails).where(eq(ratingDetails.ratingId, id));
+
+    const result = await db
+      .delete(ratings)
+      .where(
+        and(
+          eq(ratings.id, id),
+          eq(ratings.createdById, createdById)
+        )
+      );
+
+    if (result.rowCount === 0) {
+      throw new Error('Rating not found or access denied');
+    }
+  }
+
+  async getRatingDetails(ratingId: string): Promise<RatingDetail[]> {
+    return await db.select().from(ratingDetails).where(
+      eq(ratingDetails.ratingId, ratingId)
+    ).orderBy(asc(ratingDetails.sortOrder));
   }
 
   // Department operations - Administrator isolated

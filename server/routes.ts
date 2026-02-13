@@ -16,6 +16,7 @@ import {
   insertLevelSchema,
   insertGradeSchema,
   insertBusinessRoleSchema,
+  insertRatingSchema,
   insertDepartmentSchema,
   insertAppraisalCycleSchema,
   insertReviewFrequencySchema,
@@ -3084,6 +3085,152 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting business role:", error);
       res.status(500).json({ message: "Failed to delete business role" });
+    }
+  });
+
+  // Rating management routes - Administrator managed
+  app.get('/api/ratings', isAuthenticated, requireRoles(['admin', 'hr_manager']), async (req: any, res) => {
+    try {
+      const requestingUserId = req.user.claims.sub;
+      const requestingUser = await storage.getUser(requestingUserId);
+      
+      if (!requestingUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      let adminId = requestingUserId;
+      if (requestingUser.role === 'hr_manager' && requestingUser.companyId) {
+        const companyAdmins = await storage.getUsers({ role: 'admin', companyId: requestingUser.companyId });
+        if (companyAdmins && companyAdmins.length > 0) {
+          adminId = companyAdmins[0].id;
+        }
+      }
+      
+      const ratingsList = await storage.getRatings(adminId);
+      
+      const ratingsWithDetails = await Promise.all(
+        ratingsList.map(async (rating) => {
+          const details = await storage.getRatingDetails(rating.id);
+          return { ...rating, details };
+        })
+      );
+      
+      res.json(ratingsWithDetails);
+    } catch (error) {
+      console.error("Error fetching ratings:", error);
+      res.status(500).json({ message: "Failed to fetch ratings" });
+    }
+  });
+
+  app.get('/api/ratings/:id', isAuthenticated, requireRoles(['admin', 'hr_manager']), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const requestingUserId = req.user.claims.sub;
+      const requestingUser = await storage.getUser(requestingUserId);
+      
+      if (!requestingUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      let adminId = requestingUserId;
+      if (requestingUser.role === 'hr_manager' && requestingUser.companyId) {
+        const companyAdmins = await storage.getUsers({ role: 'admin', companyId: requestingUser.companyId });
+        if (companyAdmins && companyAdmins.length > 0) {
+          adminId = companyAdmins[0].id;
+        }
+      }
+      
+      const result = await storage.getRatingWithDetails(id, adminId);
+      if (!result) {
+        return res.status(404).json({ message: "Rating not found" });
+      }
+      res.json({ ...result.rating, details: result.details });
+    } catch (error) {
+      console.error("Error fetching rating:", error);
+      res.status(500).json({ message: "Failed to fetch rating" });
+    }
+  });
+
+  app.post('/api/ratings', isAuthenticated, requireRoles(['admin']), async (req: any, res) => {
+    try {
+      const { details, ...ratingData } = req.body;
+      const parsedRating = insertRatingSchema.parse(ratingData);
+      const createdById = req.user.claims.sub;
+
+      const scaleCount = (parsedRating.ratingScaleTo || 5) - (parsedRating.ratingScaleFrom || 1) + 1;
+      if (!details || !Array.isArray(details) || details.length !== scaleCount) {
+        return res.status(400).json({ message: `Expected ${scaleCount} rating details to match scale range` });
+      }
+      for (const d of details) {
+        if (!d.code || !d.code.trim() || !d.name || !d.name.trim()) {
+          return res.status(400).json({ message: "Code and Name are required for all rating details" });
+        }
+      }
+
+      const rating = await storage.createRating(parsedRating, details, createdById);
+      const fullRating = await storage.getRatingWithDetails(rating.id, createdById);
+      res.status(201).json(fullRating ? { ...fullRating.rating, details: fullRating.details } : rating);
+    } catch (error) {
+      console.error("Error creating rating:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid rating data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to create rating" });
+    }
+  });
+
+  app.put('/api/ratings/:id', isAuthenticated, requireRoles(['admin']), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const createdById = req.user.claims.sub;
+      
+      const existingRating = await storage.getRating(id, createdById);
+      if (!existingRating) {
+        return res.status(404).json({ message: "Rating not found" });
+      }
+      
+      const { details, id: _id, createdById: _createdById, createdAt: _createdAt, ...safeData } = req.body;
+      const parsedRating = insertRatingSchema.partial().parse(safeData);
+
+      const scaleTo = parsedRating.ratingScaleTo ?? existingRating.ratingScaleTo;
+      const scaleFrom = parsedRating.ratingScaleFrom ?? existingRating.ratingScaleFrom;
+      const scaleCount = scaleTo - scaleFrom + 1;
+      if (!details || !Array.isArray(details) || details.length !== scaleCount) {
+        return res.status(400).json({ message: `Expected ${scaleCount} rating details to match scale range` });
+      }
+      for (const d of details) {
+        if (!d.code || !d.code.trim() || !d.name || !d.name.trim()) {
+          return res.status(400).json({ message: "Code and Name are required for all rating details" });
+        }
+      }
+
+      const rating = await storage.updateRating(id, parsedRating, details, createdById);
+      const fullRating = await storage.getRatingWithDetails(rating.id, createdById);
+      res.json(fullRating ? { ...fullRating.rating, details: fullRating.details } : rating);
+    } catch (error) {
+      console.error("Error updating rating:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid rating data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to update rating" });
+    }
+  });
+
+  app.delete('/api/ratings/:id', isAuthenticated, requireRoles(['admin']), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const createdById = req.user.claims.sub;
+      
+      const existingRating = await storage.getRating(id, createdById);
+      if (!existingRating) {
+        return res.status(404).json({ message: "Rating not found" });
+      }
+      
+      await storage.deleteRating(id, createdById);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting rating:", error);
+      res.status(500).json({ message: "Failed to delete rating" });
     }
   });
 
