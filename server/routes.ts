@@ -3005,16 +3005,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "User not found" });
       }
       
-      let adminId = requestingUserId;
+      const creatorIds: string[] = [requestingUserId];
       if (requestingUser.role === 'hr_manager' && requestingUser.companyId) {
         const companyAdmins = await storage.getUsers({ role: 'admin', companyId: requestingUser.companyId });
-        if (companyAdmins && companyAdmins.length > 0) {
-          adminId = companyAdmins[0].id;
+        for (const admin of companyAdmins) {
+          if (!creatorIds.includes(admin.id)) creatorIds.push(admin.id);
+        }
+        const companyHrManagers = await storage.getUsers({ role: 'hr_manager', companyId: requestingUser.companyId });
+        for (const hr of companyHrManagers) {
+          if (!creatorIds.includes(hr.id)) creatorIds.push(hr.id);
+        }
+      } else if (requestingUser.role === 'admin' && requestingUser.companyId) {
+        const companyHrManagers = await storage.getUsers({ role: 'hr_manager', companyId: requestingUser.companyId });
+        for (const hr of companyHrManagers) {
+          if (!creatorIds.includes(hr.id)) creatorIds.push(hr.id);
         }
       }
       
-      const businessRoles = await storage.getBusinessRoles(adminId);
-      res.json(businessRoles);
+      const allRoles = [];
+      for (const id of creatorIds) {
+        const roles = await storage.getBusinessRoles(id);
+        allRoles.push(...roles);
+      }
+      const uniqueRoles = allRoles.filter((role, idx, self) => self.findIndex(r => r.id === role.id) === idx);
+      uniqueRoles.sort((a, b) => a.code.localeCompare(b.code));
+      res.json(uniqueRoles);
     } catch (error) {
       console.error("Error fetching business roles:", error);
       res.status(500).json({ message: "Failed to fetch business roles" });
@@ -3101,16 +3116,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "User not found" });
       }
       
-      let adminId = requestingUserId;
+      const creatorIds: string[] = [requestingUserId];
       if (requestingUser.role === 'hr_manager' && requestingUser.companyId) {
         const companyAdmins = await storage.getUsers({ role: 'admin', companyId: requestingUser.companyId });
-        if (companyAdmins && companyAdmins.length > 0) {
-          adminId = companyAdmins[0].id;
+        for (const admin of companyAdmins) {
+          if (!creatorIds.includes(admin.id)) creatorIds.push(admin.id);
+        }
+        const companyHrManagers = await storage.getUsers({ role: 'hr_manager', companyId: requestingUser.companyId });
+        for (const hr of companyHrManagers) {
+          if (!creatorIds.includes(hr.id)) creatorIds.push(hr.id);
+        }
+      } else if (requestingUser.role === 'admin' && requestingUser.companyId) {
+        const companyHrManagers = await storage.getUsers({ role: 'hr_manager', companyId: requestingUser.companyId });
+        for (const hr of companyHrManagers) {
+          if (!creatorIds.includes(hr.id)) creatorIds.push(hr.id);
         }
       }
       
-      const areas = await storage.getFunctionalAreas(adminId);
-      res.json(areas);
+      const allAreas = [];
+      for (const id of creatorIds) {
+        const areas = await storage.getFunctionalAreas(id);
+        allAreas.push(...areas);
+      }
+      const uniqueAreas = allAreas.filter((area, idx, self) => self.findIndex(a => a.id === area.id) === idx);
+      uniqueAreas.sort((a, b) => a.code.localeCompare(b.code));
+      res.json(uniqueAreas);
     } catch (error) {
       console.error("Error fetching functional areas:", error);
       res.status(500).json({ message: "Failed to fetch functional areas" });
