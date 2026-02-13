@@ -312,6 +312,7 @@ export interface IStorage {
   // KPI Weight operations
   createInitiatedAppraisalKpiWeight(weight: any): Promise<any>;
   createInitiatedAppraisalKraWeight(weight: any): Promise<any>;
+  getEmployeeIdsWithExistingEvaluations(appraisalGroupId: string, excludeAppraisalId: string): Promise<Set<string>>;
 
   // Scheduled Appraisal Task operations
   createScheduledAppraisalTask(task: InsertScheduledAppraisalTask): Promise<ScheduledAppraisalTask>;
@@ -2711,6 +2712,26 @@ export class DatabaseStorage implements IStorage {
   async createInitiatedAppraisalKraWeight(weight: any): Promise<any> {
     const [newWeight] = await db.insert(initiatedAppraisalKraWeights).values(weight).returning();
     return newWeight;
+  }
+
+  async getEmployeeIdsWithExistingEvaluations(appraisalGroupId: string, excludeAppraisalId: string): Promise<Set<string>> {
+    const existingAppraisals = await db.select({ id: initiatedAppraisals.id })
+      .from(initiatedAppraisals)
+      .where(and(
+        eq(initiatedAppraisals.appraisalGroupId, appraisalGroupId),
+        sql`${initiatedAppraisals.id} != ${excludeAppraisalId}`
+      ));
+    
+    if (existingAppraisals.length === 0) {
+      return new Set<string>();
+    }
+    
+    const existingAppraisalIds = existingAppraisals.map(a => a.id);
+    const existingEvals = await db.select({ employeeId: evaluations.employeeId })
+      .from(evaluations)
+      .where(inArray(evaluations.initiatedAppraisalId, existingAppraisalIds));
+    
+    return new Set(existingEvals.map(e => e.employeeId));
   }
 
   async createInitiatedAppraisalDetailTiming(timing: InsertInitiatedAppraisalDetailTiming): Promise<InitiatedAppraisalDetailTiming> {

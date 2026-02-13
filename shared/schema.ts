@@ -500,6 +500,7 @@ export const initiatedAppraisals = pgTable("initiated_appraisals", {
   status: appraisalCycleStatusEnum("status").default('draft'),
   makePublic: boolean("make_public").default(false),
   publishType: publishTypeEnum("publish_type").default('now'),
+  publishForNewOnly: boolean("publish_for_new_only").default(false),
   createdById: varchar("created_by_id").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),

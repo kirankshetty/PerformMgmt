@@ -4291,6 +4291,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         excludedEmployeeIds: parsedData.excludedEmployeeIds || [],
         makePublic: parsedData.makePublic || false,
         publishType: parsedData.publishType || 'now',
+        publishForNewOnly: parsedData.publishForNewOnly || false,
         createdById: requestingUserId,
       };
 
@@ -4369,6 +4370,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Get all members of the appraisal group
           const members = await storage.getAppraisalGroupMembers(validatedData.appraisalGroupId, requestingUserId);
           const activeMembers = members.filter(member => member.user && member.user.status === 'active');
+
+          let existingEvaluationEmployeeIds = new Set<string>();
+          if (validatedData.publishForNewOnly) {
+            existingEvaluationEmployeeIds = await storage.getEmployeeIdsWithExistingEvaluations(
+              validatedData.appraisalGroupId,
+              initiatedAppraisal.id
+            );
+            console.log(`Publish for new only: Found ${existingEvaluationEmployeeIds.size} employees with existing evaluations`);
+          }
           
           // Create evaluations for each active member
           for (const member of activeMembers) {
@@ -4376,6 +4386,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
             
             // Skip if employee is in excluded list
             if (validatedData.excludedEmployeeIds?.includes(employee.id)) {
+              continue;
+            }
+
+            if (validatedData.publishForNewOnly && existingEvaluationEmployeeIds.has(employee.id)) {
+              console.log(`Skipping employee ${employee.id} (${employee.email}) - already has evaluation in this group`);
               continue;
             }
             
@@ -4571,6 +4586,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Get all members of the appraisal group
           const members = await storage.getAppraisalGroupMembers(appraisal.appraisalGroupId, appraisal.createdById);
           const activeMembers = members.filter(member => member.user && member.user.status === 'active');
+
+          let existingEvalEmployeeIds = new Set<string>();
+          if (appraisal.publishForNewOnly) {
+            existingEvalEmployeeIds = await storage.getEmployeeIdsWithExistingEvaluations(
+              appraisal.appraisalGroupId,
+              appraisal.id
+            );
+            console.log(`Calendar publish - new only: Found ${existingEvalEmployeeIds.size} employees with existing evaluations`);
+          }
           
           let evaluationsCreated = 0;
           let emailsSent = 0;
@@ -4581,6 +4605,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
             
             // Skip if employee is in excluded list
             if (appraisal.excludedEmployeeIds?.includes(employee.id)) {
+              continue;
+            }
+
+            if (appraisal.publishForNewOnly && existingEvalEmployeeIds.has(employee.id)) {
+              console.log(`Skipping employee ${employee.id} (${employee.email}) - already has evaluation in this group (calendar)`);
               continue;
             }
             

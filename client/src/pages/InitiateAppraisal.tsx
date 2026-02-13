@@ -160,6 +160,7 @@ const initiateAppraisalSchema = z.object({
   excludedEmployeeIds: z.array(z.string()).default([]),
   makePublic: z.boolean().default(false),
   publishType: z.enum(['now', 'as_per_calendar']).default('now'),
+  publishForNewOnly: z.boolean().default(false),
 }).refine((data) => {
   if (data.appraisalType === 'questionnaire_based' || data.appraisalType === 'mbo_based') {
     return data.questionnaireTemplateIds && data.questionnaireTemplateIds.length > 0;
@@ -202,6 +203,7 @@ export default function InitiateAppraisal() {
       excludedEmployeeIds: [],
       makePublic: false,
       publishType: 'now',
+      publishForNewOnly: false,
     },
   });
 
@@ -306,6 +308,7 @@ export default function InitiateAppraisal() {
       excludedEmployeeIds: [],
       makePublic: false,
       publishType: 'now',
+      publishForNewOnly: false,
     });
     setUploadedFile(null);
     setSelectedCalendarId(null);
@@ -1447,6 +1450,31 @@ export default function InitiateAppraisal() {
                             </RadioGroup>
                           </FormControl>
                           <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="publishForNewOnly"
+                      render={({ field }) => (
+                        <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
+                          <FormControl>
+                            <input
+                              type="checkbox"
+                              checked={field.value}
+                              onChange={field.onChange}
+                              className="mt-1 h-4 w-4 rounded border-gray-300"
+                            />
+                          </FormControl>
+                          <div className="space-y-1 leading-none">
+                            <FormLabel className="font-medium cursor-pointer">
+                              Publish only for newly added employees
+                            </FormLabel>
+                            <p className="text-sm text-muted-foreground">
+                              When enabled, the appraisal will be triggered only for members who were recently added to the appraisal group and do not already have an evaluation for this group
+                            </p>
+                          </div>
                         </FormItem>
                       )}
                     />
