@@ -86,6 +86,7 @@ export const users = pgTable("users", {
   companyId: varchar("company_id"),
   levelId: varchar("level_id"),
   gradeId: varchar("grade_id"),
+  businessRoleId: varchar("business_role_id"),
   role: userRoleEnum("role").default('employee'),
   roles: text("roles").array(),
   status: statusEnum("status").default('active'),
@@ -97,6 +98,7 @@ export const users = pgTable("users", {
   index("users_created_by_id_idx").on(table.createdById),
   index("users_level_id_idx").on(table.levelId),
   index("users_grade_id_idx").on(table.gradeId),
+  index("users_business_role_id_idx").on(table.businessRoleId),
 ])
 
 // Companies table
@@ -287,6 +289,20 @@ export const grades = pgTable("grades", {
 }, (table) => [
   unique().on(table.createdById, table.code),
   index("grades_created_by_id_idx").on(table.createdById),
+]);
+
+// Business Role table - Administrator managed
+export const businessRoles = pgTable("business_roles", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  code: varchar("code").notNull(),
+  description: text("description").notNull(),
+  status: statusEnum("status").default('active'),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  createdById: varchar("created_by_id").notNull(),
+}, (table) => [
+  unique().on(table.createdById, table.code),
+  index("business_roles_created_by_id_idx").on(table.createdById),
 ]);
 
 // Department table - Administrator managed
@@ -481,6 +497,10 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   grade: one(grades, {
     fields: [users.gradeId],
     references: [grades.id],
+  }),
+  businessRole: one(businessRoles, {
+    fields: [users.businessRoleId],
+    references: [businessRoles.id],
   }),
 }));
 
@@ -733,6 +753,13 @@ export const insertGradeSchema = createInsertSchema(grades).omit({
   createdById: true,
 });
 
+export const insertBusinessRoleSchema = createInsertSchema(businessRoles).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  createdById: true,
+});
+
 export const insertDepartmentSchema = createInsertSchema(departments).omit({
   id: true,
   createdAt: true,
@@ -853,6 +880,8 @@ export type Level = typeof levels.$inferSelect;
 export type InsertLevel = z.infer<typeof insertLevelSchema>;
 export type Grade = typeof grades.$inferSelect;
 export type InsertGrade = z.infer<typeof insertGradeSchema>;
+export type BusinessRole = typeof businessRoles.$inferSelect;
+export type InsertBusinessRole = z.infer<typeof insertBusinessRoleSchema>;
 export type Department = typeof departments.$inferSelect;
 export type InsertDepartment = z.infer<typeof insertDepartmentSchema>;
 export type AppraisalCycle = typeof appraisalCycles.$inferSelect;

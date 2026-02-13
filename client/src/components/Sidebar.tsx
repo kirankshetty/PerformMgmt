@@ -27,6 +27,7 @@ import {
   Target,
   MessageSquare,
   BarChart3,
+  Briefcase,
 } from "lucide-react";
 import type { Company } from "@shared/schema";
 
@@ -44,6 +45,7 @@ const navItems: NavItem[] = [
   { href: "/departments", label: "Department Management", icon: Building2, roles: ["admin"] },
   { href: "/levels", label: "Level Management", icon: Layers, roles: ["admin"] },
   { href: "/grades", label: "Grade Management", icon: Award, roles: ["admin"] },
+  { href: "/business-roles", label: "Business Role", icon: Briefcase, roles: ["admin"] },
   { href: "/users", label: "User Management", icon: Users, roles: ["super_admin", "admin"] },
   { href: "/appraisal-cycles", label: "Appraisal Cycles", icon: Clock, roles: ["admin"] },
   { href: "/review-frequencies", label: "Review Frequencies", icon: Repeat, roles: ["admin"] },
@@ -55,6 +57,7 @@ const navItems: NavItem[] = [
   { href: "/hr-meetings", label: "View Meetings", icon: CalendarCheck, roles: ["hr_manager"] },
   { href: "/calibrate-ratings", label: "Calibrate Ratings", icon: Award, roles: ["hr_manager"] },
   { href: "/analytics", label: "Analytics", icon: BarChart3, roles: ["hr_manager"] },
+  { href: "/business-roles-hr", label: "Business Role", icon: Briefcase, roles: ["hr_manager"] },
   { href: "/questionnaires", label: "Questionnaires", icon: FileText, roles: ["super_admin", "admin", "hr_manager"] },
   { href: "/evaluations", label: "My Evaluations", icon: ClipboardList, roles: ["employee"] },
   { href: "/manager-submissions", label: "Submissions", icon: ClipboardList, roles: ["manager"] },

@@ -15,6 +15,7 @@ import {
   insertRegistrationSchema,
   insertLevelSchema,
   insertGradeSchema,
+  insertBusinessRoleSchema,
   insertDepartmentSchema,
   insertAppraisalCycleSchema,
   insertReviewFrequencySchema,
@@ -2987,6 +2988,102 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting grade:", error);
       res.status(500).json({ message: "Failed to delete grade" });
+    }
+  });
+
+  // Business Role management routes
+  app.get('/api/business-roles', isAuthenticated, requireRoles(['admin', 'hr_manager']), async (req: any, res) => {
+    try {
+      const requestingUserId = req.user.claims.sub;
+      const requestingUser = await storage.getUser(requestingUserId);
+      
+      if (!requestingUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      let adminId = requestingUserId;
+      if (requestingUser.role === 'hr_manager' && requestingUser.companyId) {
+        const companyAdmins = await storage.getUsers({ role: 'admin', companyId: requestingUser.companyId });
+        if (companyAdmins && companyAdmins.length > 0) {
+          adminId = companyAdmins[0].id;
+        }
+      }
+      
+      const businessRoles = await storage.getBusinessRoles(adminId);
+      res.json(businessRoles);
+    } catch (error) {
+      console.error("Error fetching business roles:", error);
+      res.status(500).json({ message: "Failed to fetch business roles" });
+    }
+  });
+
+  app.get('/api/business-roles/:id', isAuthenticated, requireRoles(['admin', 'hr_manager']), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const createdById = req.user.claims.sub;
+      const businessRole = await storage.getBusinessRole(id, createdById);
+      if (!businessRole) {
+        return res.status(404).json({ message: "Business role not found" });
+      }
+      res.json(businessRole);
+    } catch (error) {
+      console.error("Error fetching business role:", error);
+      res.status(500).json({ message: "Failed to fetch business role" });
+    }
+  });
+
+  app.post('/api/business-roles', isAuthenticated, requireRoles(['admin']), async (req: any, res) => {
+    try {
+      const businessRoleData = insertBusinessRoleSchema.parse(req.body);
+      const createdById = req.user.claims.sub;
+      const businessRole = await storage.createBusinessRole(businessRoleData, createdById);
+      res.status(201).json(businessRole);
+    } catch (error) {
+      console.error("Error creating business role:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid business role data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to create business role" });
+    }
+  });
+
+  app.put('/api/business-roles/:id', isAuthenticated, requireRoles(['admin']), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const createdById = req.user.claims.sub;
+      
+      const existingBusinessRole = await storage.getBusinessRole(id, createdById);
+      if (!existingBusinessRole) {
+        return res.status(404).json({ message: "Business role not found" });
+      }
+      
+      const { id: _id, createdById: _createdById, createdAt: _createdAt, ...safeData } = insertBusinessRoleSchema.partial().parse(req.body);
+      const businessRole = await storage.updateBusinessRole(id, safeData, createdById);
+      res.json(businessRole);
+    } catch (error) {
+      console.error("Error updating business role:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid business role data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to update business role" });
+    }
+  });
+
+  app.delete('/api/business-roles/:id', isAuthenticated, requireRoles(['admin']), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const createdById = req.user.claims.sub;
+      
+      const existingBusinessRole = await storage.getBusinessRole(id, createdById);
+      if (!existingBusinessRole) {
+        return res.status(404).json({ message: "Business role not found" });
+      }
+      
+      await storage.deleteBusinessRole(id, createdById);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting business role:", error);
+      res.status(500).json({ message: "Failed to delete business role" });
     }
   });
 

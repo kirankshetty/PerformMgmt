@@ -79,6 +79,10 @@ export default function EmployeeManagement() {
     queryKey: ["/api/departments"],
   });
 
+  const { data: businessRoles = [] } = useQuery<any[]>({
+    queryKey: ["/api/business-roles"],
+  });
+
   const createUserMutation = useMutation({
     mutationFn: async (userData: InsertUser) => {
       await apiRequest("POST", "/api/users", userData);
@@ -271,6 +275,7 @@ export default function EmployeeManagement() {
     gradeId: z.string().nullable().optional(),
     reportingManagerId: z.string().nullable().optional(),
     department: z.string().nullable().optional(),
+    businessRoleId: z.string().nullable().optional(),
     role: z.enum(['super_admin', 'admin', 'hr_manager', 'employee', 'manager']),
     roles: z.array(z.enum(['super_admin', 'admin', 'hr_manager', 'employee', 'manager'])).optional().default(['employee']),
     status: z.enum(['active', 'inactive']).default('active'),
@@ -306,6 +311,7 @@ export default function EmployeeManagement() {
       companyId: isAdmin && currentUser?.companyId ? currentUser.companyId : "none",
       levelId: "none",
       gradeId: "none",
+      businessRoleId: "none",
       reportingManagerId: "none",
       role: "employee",
       roles: ["employee"],
@@ -330,6 +336,7 @@ export default function EmployeeManagement() {
       companyId: data.companyId === "none" ? null : data.companyId,
       levelId: data.levelId === "none" ? null : data.levelId,
       gradeId: data.gradeId === "none" ? null : data.gradeId,
+      businessRoleId: (data as any).businessRoleId === "none" ? null : (data as any).businessRoleId,
       reportingManagerId: data.reportingManagerId === "none" ? null : data.reportingManagerId,
       department: data.department === "none" ? null : data.department,
     };
@@ -376,6 +383,7 @@ export default function EmployeeManagement() {
       companyId: isAdmin && currentUser?.companyId ? currentUser.companyId : (user.companyId || "none"),
       levelId: user.levelId || "none",
       gradeId: user.gradeId || "none",
+      businessRoleId: (user as any).businessRoleId || "none",
       reportingManagerId: user.reportingManagerId || "none",
       role: user.role || "employee",
       roles: (user as any).roles || [user.role] || ["employee"],
@@ -627,6 +635,34 @@ export default function EmployeeManagement() {
                               {departments.map((department: any) => (
                                 <SelectItem key={department.id} value={department.code}>
                                   {department.description} ({department.code})
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="businessRoleId"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Business Role</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value ?? "none"}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select business role" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="none">No Business Role</SelectItem>
+                              {businessRoles.map((br: any) => (
+                                <SelectItem key={br.id} value={br.id}>
+                                  {br.description} ({br.code})
                                 </SelectItem>
                               ))}
                             </SelectContent>

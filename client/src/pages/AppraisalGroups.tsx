@@ -47,6 +47,7 @@ interface EmployeeFilters {
   department: string[];
   level: string[];
   grade: string[];
+  businessRole: string[];
   reportingManager: string[];
   role: string[];
   dojFromDate: Date | undefined;
@@ -64,6 +65,7 @@ export default function AppraisalGroups() {
     department: [],
     level: [],
     grade: [],
+    businessRole: [],
     reportingManager: [],
     role: [],
     dojFromDate: undefined,
@@ -76,6 +78,7 @@ export default function AppraisalGroups() {
     department: [],
     level: [],
     grade: [],
+    businessRole: [],
     reportingManager: [],
     role: [],
     dojFromDate: undefined,
@@ -116,6 +119,10 @@ export default function AppraisalGroups() {
 
   const { data: grades = [] } = useQuery<Array<{id: string, code: string, description: string}>>({
     queryKey: ['/api/grades'],
+  });
+
+  const { data: businessRoles = [] } = useQuery<any[]>({
+    queryKey: ["/api/business-roles"],
   });
 
   // Create group mutation
@@ -207,6 +214,7 @@ export default function AppraisalGroups() {
         department: [],
         level: [],
         grade: [],
+        businessRole: [],
         reportingManager: [],
         role: [],
         dojFromDate: undefined,
@@ -218,6 +226,7 @@ export default function AppraisalGroups() {
         department: [],
         level: [],
         grade: [],
+        businessRole: [],
         reportingManager: [],
         role: [],
         dojFromDate: undefined,
@@ -335,7 +344,7 @@ export default function AppraisalGroups() {
   };
 
   // Extract unique filter options from all users
-  const getUniqueOptions = (field: 'locationId' | 'department' | 'levelId' | 'gradeId' | 'reportingManagerId' | 'role') => {
+  const getUniqueOptions = (field: 'locationId' | 'department' | 'levelId' | 'gradeId' | 'businessRoleId' | 'reportingManagerId' | 'role') => {
     const values = allUsers
       .flatMap(user => {
         switch (field) {
@@ -353,6 +362,11 @@ export default function AppraisalGroups() {
             return user.gradeId ? {
               value: user.gradeId,
               label: grades.find(grade => grade.id === user.gradeId)?.description || user.gradeId
+            } : [];
+          case 'businessRoleId':
+            return (user as any).businessRoleId ? {
+              value: (user as any).businessRoleId,
+              label: businessRoles.find(br => br.id === (user as any).businessRoleId)?.description || (user as any).businessRoleId
             } : [];
           case 'reportingManagerId':
             return user.reportingManagerId ? {
@@ -417,6 +431,11 @@ export default function AppraisalGroups() {
     // Grade filter
     if (appliedFilters.grade.length > 0) {
       if (!appliedFilters.grade.includes(user.gradeId ?? '')) return false;
+    }
+
+    // Business Role filter
+    if (appliedFilters.businessRole.length > 0) {
+      if (!appliedFilters.businessRole.includes((user as any).businessRoleId ?? '')) return false;
     }
 
     // Reporting Manager filter
@@ -979,6 +998,17 @@ export default function AppraisalGroups() {
                   </div>
                   
                   <div>
+                    <label className="block text-sm font-medium mb-2">Business Role</label>
+                    <MultiSelect
+                      options={getUniqueOptions('businessRoleId')}
+                      value={draftFilters.businessRole}
+                      onChange={(value) => setDraftFilters({ ...draftFilters, businessRole: value })}
+                      placeholder="Select business roles..."
+                      testId="dialog-filter-business-role"
+                    />
+                  </div>
+                  
+                  <div>
                     <label className="block text-sm font-medium mb-2">Reporting Manager</label>
                     <MultiSelect
                       options={getUniqueOptions('reportingManagerId')}
@@ -1072,6 +1102,7 @@ export default function AppraisalGroups() {
                         department: [],
                         level: [],
                         grade: [],
+                        businessRole: [],
                         reportingManager: [],
                         role: [],
                         dojFromDate: undefined,
@@ -1149,6 +1180,7 @@ export default function AppraisalGroups() {
                     appliedFilters.department.length > 0 ||
                     appliedFilters.level.length > 0 ||
                     appliedFilters.grade.length > 0 ||
+                    appliedFilters.businessRole.length > 0 ||
                     appliedFilters.reportingManager.length > 0 ||
                     appliedFilters.role.length > 0)
                     ? "No employees found matching your filter criteria."
@@ -1175,6 +1207,7 @@ export default function AppraisalGroups() {
                       department: [],
                       level: [],
                       grade: [],
+                      businessRole: [],
                       reportingManager: [],
                       role: [],
                       dojFromDate: undefined,
@@ -1186,6 +1219,7 @@ export default function AppraisalGroups() {
                       department: [],
                       level: [],
                       grade: [],
+                      businessRole: [],
                       reportingManager: [],
                       role: [],
                       dojFromDate: undefined,

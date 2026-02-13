@@ -44,6 +44,7 @@ export default function ReviewAppraisal() {
     department: "all",
     level: "all",
     grade: "all",
+    businessRole: "all",
     manager: "all",
   });
 
@@ -77,6 +78,10 @@ export default function ReviewAppraisal() {
 
   const { data: grades } = useQuery({
     queryKey: ["/api/grades"],
+  });
+
+  const { data: businessRoles = [] } = useQuery<any[]>({
+    queryKey: ["/api/business-roles"],
   });
 
   const { data: managers } = useQuery({
@@ -305,6 +310,7 @@ export default function ReviewAppraisal() {
             : 'N/A',
           levelId: empProgress.employee.levelId,
           gradeId: empProgress.employee.gradeId,
+          businessRoleId: empProgress.employee.businessRoleId,
           managerId: empProgress.evaluation?.manager?.id || null,
           managerName: empProgress.evaluation?.manager 
             ? `${empProgress.evaluation.manager.firstName} ${empProgress.evaluation.manager.lastName}`
@@ -375,6 +381,11 @@ export default function ReviewAppraisal() {
 
       // Grade filter
       if (filters.grade !== "all" && row.gradeId !== filters.grade) {
+        return false;
+      }
+
+      // Business Role filter
+      if (filters.businessRole !== "all" && row.businessRoleId !== filters.businessRole) {
         return false;
       }
 
@@ -652,6 +663,26 @@ export default function ReviewAppraisal() {
             </div>
 
             <div className="space-y-2">
+              <Label htmlFor="business-role-filter" data-testid="label-business-role">Business Role</Label>
+              <Select
+                value={filters.businessRole}
+                onValueChange={(value) => setFilters({ ...filters, businessRole: value })}
+              >
+                <SelectTrigger id="business-role-filter" data-testid="select-business-role">
+                  <SelectValue placeholder="Select business role" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Business Roles</SelectItem>
+                  {businessRoles.map((role: any) => (
+                    <SelectItem key={role.id} value={role.id} data-testid={`business-role-option-${role.id}`}>
+                      {role.code} - {role.description}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
               <Label htmlFor="manager-filter" data-testid="label-manager">Manager</Label>
               <Select
                 value={filters.manager}
@@ -684,6 +715,7 @@ export default function ReviewAppraisal() {
                   department: "all",
                   level: "all",
                   grade: "all",
+                  businessRole: "all",
                   manager: "all",
                 })}
                 data-testid="button-clear-filters"

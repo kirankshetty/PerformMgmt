@@ -53,6 +53,7 @@ export default function CalibrateRatings() {
     department: "all",
     level: "all",
     grade: "all",
+    businessRole: "all",
     manager: "all",
   });
 
@@ -84,6 +85,10 @@ export default function CalibrateRatings() {
 
   const { data: grades } = useQuery({
     queryKey: ["/api/grades"],
+  });
+
+  const { data: businessRoles = [] } = useQuery<any[]>({
+    queryKey: ["/api/business-roles"],
   });
 
   const { data: managers } = useQuery({
@@ -214,6 +219,11 @@ export default function CalibrateRatings() {
 
       // Grade filter
       if (filters.grade !== "all" && evaluation.gradeId !== filters.grade) {
+        return false;
+      }
+
+      // Business Role filter
+      if (filters.businessRole !== "all" && evaluation.businessRoleId !== filters.businessRole) {
         return false;
       }
 
@@ -442,6 +452,26 @@ export default function CalibrateRatings() {
                   {((grades as any[]) || [])?.map((grade: any) => (
                     <SelectItem key={grade.id} value={grade.id}>
                       {grade.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="business-role" data-testid="label-business-role">Business Role</Label>
+              <Select
+                value={filters.businessRole}
+                onValueChange={(value) => setFilters({ ...filters, businessRole: value })}
+              >
+                <SelectTrigger id="business-role" data-testid="select-business-role">
+                  <SelectValue placeholder="Select business role" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Business Roles</SelectItem>
+                  {businessRoles.map((role: any) => (
+                    <SelectItem key={role.id} value={role.id}>
+                      {role.code} - {role.description}
                     </SelectItem>
                   ))}
                 </SelectContent>

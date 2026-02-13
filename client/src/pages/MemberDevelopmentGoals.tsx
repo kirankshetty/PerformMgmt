@@ -69,6 +69,7 @@ interface FilterState {
   department: string;
   level: string;
   grade: string;
+  businessRole: string;
   manager: string;
 }
 
@@ -81,6 +82,7 @@ export default function MemberDevelopmentGoals() {
     department: "all",
     level: "all",
     grade: "all",
+    businessRole: "all",
     manager: "all",
   });
   const [searchApplied, setSearchApplied] = useState(false);
@@ -113,6 +115,10 @@ export default function MemberDevelopmentGoals() {
 
   const { data: grades = [] } = useQuery<any[]>({
     queryKey: ["/api/grades"],
+  });
+
+  const { data: businessRoles = [] } = useQuery<any[]>({
+    queryKey: ["/api/business-roles"],
   });
 
   const { data: managers = [] } = useQuery<any[]>({
@@ -153,6 +159,10 @@ export default function MemberDevelopmentGoals() {
       }
       
       if (filters.grade !== "all" && goal.employee?.gradeId !== filters.grade) {
+        return false;
+      }
+      
+      if (filters.businessRole !== "all" && (goal.employee as any)?.businessRoleId !== filters.businessRole) {
         return false;
       }
       
@@ -205,6 +215,7 @@ export default function MemberDevelopmentGoals() {
       department: "all",
       level: "all",
       grade: "all",
+      businessRole: "all",
       manager: "all",
     });
     setSearchApplied(false);
@@ -368,6 +379,26 @@ export default function MemberDevelopmentGoals() {
                     {grades.map((grade: any) => (
                       <SelectItem key={grade.id} value={grade.id}>
                         {grade.code} - {grade.description}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium mb-2 block">Business Role</label>
+                <Select
+                  value={filters.businessRole}
+                  onValueChange={(value) => setFilters({ ...filters, businessRole: value })}
+                >
+                  <SelectTrigger data-testid="filter-business-role">
+                    <SelectValue placeholder="All Business Roles" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Business Roles</SelectItem>
+                    {businessRoles.map((role: any) => (
+                      <SelectItem key={role.id} value={role.id}>
+                        {role.code} - {role.description}
                       </SelectItem>
                     ))}
                   </SelectContent>

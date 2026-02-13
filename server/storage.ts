@@ -12,6 +12,7 @@ import {
   calendarCredentials,
   levels,
   grades,
+  businessRoles,
   departments,
   appraisalCycles,
   reviewFrequencies,
@@ -53,6 +54,8 @@ import {
   type InsertLevel,
   type Grade,
   type InsertGrade,
+  type BusinessRole,
+  type InsertBusinessRole,
   type Department,
   type InsertDepartment,
   type AppraisalCycle,
@@ -1112,6 +1115,7 @@ export class DatabaseStorage implements IStorage {
       department: result.employee?.department || 'N/A',
       level: result.employee?.level || 'N/A',
       grade: result.employee?.grade || 'N/A',
+      businessRoleId: result.employee?.businessRoleId || null,
       appraisalGroupId: result.initiatedAppraisal?.appraisalGroupId,
       appraisalGroupName: result.appraisalGroup?.name || 'N/A',
       frequencyCalendarId: result.initiatedAppraisal?.frequencyCalendarId,
@@ -1494,6 +1498,69 @@ export class DatabaseStorage implements IStorage {
     
     if (result.rowCount === 0) {
       throw new Error('Grade not found or access denied');
+    }
+  }
+
+  // Business Role operations - Administrator isolated
+  async getBusinessRoles(createdById: string): Promise<BusinessRole[]> {
+    return await db.select().from(businessRoles).where(
+      eq(businessRoles.createdById, createdById)
+    ).orderBy(asc(businessRoles.code));
+  }
+
+  async getBusinessRole(id: string, createdById: string): Promise<BusinessRole | undefined> {
+    const [businessRole] = await db.select().from(businessRoles).where(
+      and(
+        eq(businessRoles.id, id),
+        eq(businessRoles.createdById, createdById)
+      )
+    );
+    return businessRole;
+  }
+
+  async createBusinessRole(businessRole: InsertBusinessRole, createdById: string): Promise<BusinessRole> {
+    const [newBusinessRole] = await db.insert(businessRoles).values({
+      ...businessRole,
+      createdById,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }).returning();
+    return newBusinessRole;
+  }
+
+  async updateBusinessRole(id: string, businessRole: Partial<InsertBusinessRole>, createdById: string): Promise<BusinessRole> {
+    const [updatedBusinessRole] = await db
+      .update(businessRoles)
+      .set({
+        ...businessRole,
+        updatedAt: new Date()
+      })
+      .where(
+        and(
+          eq(businessRoles.id, id),
+          eq(businessRoles.createdById, createdById)
+        )
+      )
+      .returning();
+    
+    if (!updatedBusinessRole) {
+      throw new Error('Business role not found or access denied');
+    }
+    return updatedBusinessRole;
+  }
+
+  async deleteBusinessRole(id: string, createdById: string): Promise<void> {
+    const result = await db
+      .delete(businessRoles)
+      .where(
+        and(
+          eq(businessRoles.id, id),
+          eq(businessRoles.createdById, createdById)
+        )
+      );
+    
+    if (result.rowCount === 0) {
+      throw new Error('Business role not found or access denied');
     }
   }
 
