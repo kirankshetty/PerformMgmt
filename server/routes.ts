@@ -4232,6 +4232,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         functionalAreaId: parsedData.functionalAreaId || null,
         kraId: parsedData.kraId || null,
         kpiWeightages: parsedData.kpiWeightages || [],
+        kraGridEntries: parsedData.kraGridEntries || [],
         frequencyCalendarId: parsedData.frequencyCalendarId || null,
         selectedCalendarDetailIds: parsedData.selectedCalendarDetailIds || [],
         calendarDetailTimings: parsedData.calendarDetailTimings || [],
@@ -4264,7 +4265,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (!validatedData.appraisalCycleId) {
           return res.status(400).json({ message: "Appraisal Cycle is required for KPI-based appraisals" });
         }
-        if (!validatedData.kraId) {
+        if (validatedData.kraGridEntries && validatedData.kraGridEntries.length > 0) {
+          const totalWeightage = validatedData.kraGridEntries.reduce((sum: number, entry: any) => sum + (Number(entry.weightage) || 0), 0);
+          if (totalWeightage !== 100) {
+            return res.status(400).json({ message: "Total KRA weightage must equal 100%" });
+          }
+          for (const entry of validatedData.kraGridEntries) {
+            if (!entry.functionalAreaId || !entry.kraId) {
+              return res.status(400).json({ message: "Each grid entry must have a Functional Area and KRA / Goal selected" });
+            }
+          }
+        } else if (!validatedData.kraId) {
           return res.status(400).json({ message: "KRA / Goal is required for KPI-based appraisals" });
         }
         if (validatedData.kpiWeightages && validatedData.kpiWeightages.length > 0) {
@@ -4286,6 +4297,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
             kpiId: kw.kpiId,
             kraId: validatedData.kraId!,
             weightage: Number(kw.weightage),
+          });
+        }
+      }
+
+      // Save KRA grid entries for KPI-based appraisals
+      if (validatedData.appraisalType === 'kpi_based' && validatedData.kraGridEntries && validatedData.kraGridEntries.length > 0) {
+        for (const entry of validatedData.kraGridEntries) {
+          await storage.createInitiatedAppraisalKraWeight({
+            initiatedAppraisalId: initiatedAppraisal.id,
+            functionalAreaId: entry.functionalAreaId,
+            kraId: entry.kraId,
+            weightage: Number(entry.weightage),
           });
         }
       }

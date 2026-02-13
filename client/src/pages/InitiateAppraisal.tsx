@@ -136,8 +136,9 @@ const calendarDetailTimingSchema = z.object({
   daysToClose: z.coerce.number().min(1).max(365).default(30),
 });
 
-const kpiWeightageSchema = z.object({
-  kpiId: z.string(),
+const kraGridEntrySchema = z.object({
+  functionalAreaId: z.string(),
+  kraId: z.string(),
   weightage: z.coerce.number().min(0).max(100).default(0),
 });
 
@@ -146,9 +147,7 @@ const initiateAppraisalSchema = z.object({
   questionnaireTemplateIds: z.array(z.string()).default([]),
   documentFile: z.any().optional(),
   appraisalCycleId: z.string().optional(),
-  functionalAreaId: z.string().optional(),
-  kraId: z.string().optional(),
-  kpiWeightages: z.array(kpiWeightageSchema).default([]),
+  kraGridEntries: z.array(kraGridEntrySchema).default([]),
   frequencyCalendarId: z.string().optional(),
   selectedCalendarDetailIds: z.array(z.string()).default([]),
   calendarDetailTimings: z.array(calendarDetailTimingSchema).default([]),
@@ -166,7 +165,7 @@ const initiateAppraisalSchema = z.object({
     return data.questionnaireTemplateIds && data.questionnaireTemplateIds.length > 0;
   }
   if (data.appraisalType === 'kpi_based') {
-    return !!data.appraisalCycleId && !!data.kraId;
+    return !!data.appraisalCycleId && data.kraGridEntries && data.kraGridEntries.length > 0;
   }
   return true;
 }, {
@@ -183,7 +182,7 @@ export default function InitiateAppraisal() {
   const [isInitiateFormOpen, setIsInitiateFormOpen] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [selectedCalendarId, setSelectedCalendarId] = useState<string | null>(null);
-  const [selectedKraId, setSelectedKraId] = useState<string | null>(null);
+  const [kraGridEntries, setKraGridEntries] = useState<{id: string, functionalAreaId: string, kraId: string, weightage: number}[]>([]);
   const { toast } = useToast();
 
   const form = useForm<InitiateAppraisalForm>({
@@ -193,7 +192,7 @@ export default function InitiateAppraisal() {
       questionnaireTemplateIds: [],
       selectedCalendarDetailIds: [],
       calendarDetailTimings: [],
-      kpiWeightages: [],
+      kraGridEntries: [],
       daysToInitiate: 0,
       whenField: 'after',
       daysToClose: 30,
@@ -276,7 +275,7 @@ export default function InitiateAppraisal() {
       setSelectedGroup(null);
       form.reset();
       setUploadedFile(null);
-      setSelectedKraId(null);
+      setKraGridEntries([]);
       queryClient.invalidateQueries({ queryKey: ['/api/initiated-appraisals'] });
     },
     onError: (error) => {
@@ -297,7 +296,7 @@ export default function InitiateAppraisal() {
       questionnaireTemplateIds: [],
       selectedCalendarDetailIds: [],
       calendarDetailTimings: [],
-      kpiWeightages: [],
+      kraGridEntries: [],
       daysToInitiate: 0,
       whenField: 'after',
       daysToClose: 30,
@@ -310,7 +309,7 @@ export default function InitiateAppraisal() {
     });
     setUploadedFile(null);
     setSelectedCalendarId(null);
-    setSelectedKraId(null);
+    setKraGridEntries([]);
   };
 
   const handleCalendarSelection = (calendarId: string) => {
@@ -344,29 +343,31 @@ export default function InitiateAppraisal() {
     initializeCalendarDetailTimings(selectedIds);
   };
 
-  const handleKraSelection = (kraId: string) => {
-    setSelectedKraId(kraId);
-    form.setValue('kraId', kraId);
-    const selectedKra = kraList.find(k => k.id === kraId);
-    if (selectedKra && selectedKra.kpis) {
-      const weightages = selectedKra.kpis.map(kpi => ({
-        kpiId: kpi.id,
-        weightage: kpi.weightageContribution || 0,
-      }));
-      form.setValue('kpiWeightages', weightages);
-    } else {
-      form.setValue('kpiWeightages', []);
-    }
+  const addKraGridEntry = () => {
+    const newEntry = { id: Date.now().toString(), functionalAreaId: '', kraId: '', weightage: 0 };
+    const updated = [...kraGridEntries, newEntry];
+    setKraGridEntries(updated);
+    form.setValue('kraGridEntries', updated.map(({ id, ...rest }) => rest));
+  };
+
+  const removeKraGridEntry = (entryId: string) => {
+    const updated = kraGridEntries.filter(e => e.id !== entryId);
+    setKraGridEntries(updated);
+    form.setValue('kraGridEntries', updated.map(({ id, ...rest }) => rest));
+  };
+
+  const updateKraGridEntry = (entryId: string, field: 'functionalAreaId' | 'kraId' | 'weightage', value: string | number) => {
+    const updated = kraGridEntries.map(e => e.id === entryId ? { ...e, [field]: value } : e);
+    setKraGridEntries(updated);
+    form.setValue('kraGridEntries', updated.map(({ id, ...rest }) => rest));
   };
 
   const selectedCalendarDetailIds = form.watch('selectedCalendarDetailIds');
   const appraisalType = form.watch('appraisalType');
   const whenField = form.watch('whenField');
-  const kpiWeightages = form.watch('kpiWeightages');
 
-  const selectedKra = kraList.find(k => k.id === selectedKraId);
-  const totalWeightage = kpiWeightages.reduce((sum, w) => sum + (Number(w.weightage) || 0), 0);
-  const isWeightageValid = appraisalType !== 'kpi_based' || !selectedKra || totalWeightage === 100;
+  const totalWeightage = kraGridEntries.reduce((sum, e) => sum + (Number(e.weightage) || 0), 0);
+  const isWeightageValid = appraisalType !== 'kpi_based' || kraGridEntries.length === 0 || totalWeightage === 100;
 
   const getReviewFrequencyName = (id: string | null | undefined) => {
     if (!id) return "Not set";
@@ -377,13 +378,32 @@ export default function InitiateAppraisal() {
   const onSubmit = (data: InitiateAppraisalForm) => {
     if (!selectedGroup) return;
     
-    if (data.appraisalType === 'kpi_based' && !isWeightageValid) {
-      toast({
-        title: "Validation Error",
-        description: "KPI weightages must total 100%",
-        variant: "destructive",
-      });
-      return;
+    if (data.appraisalType === 'kpi_based') {
+      if (!isWeightageValid) {
+        toast({
+          title: "Validation Error",
+          description: "KRA weightages must total 100%",
+          variant: "destructive",
+        });
+        return;
+      }
+      const incompleteRow = kraGridEntries.find(e => !e.functionalAreaId || !e.kraId);
+      if (incompleteRow) {
+        toast({
+          title: "Validation Error",
+          description: "Each row must have a Functional Area and KRA / Goal selected",
+          variant: "destructive",
+        });
+        return;
+      }
+      if (kraGridEntries.length === 0) {
+        toast({
+          title: "Validation Error",
+          description: "Please add at least one KRA / Goal entry",
+          variant: "destructive",
+        });
+        return;
+      }
     }
 
     const submissionData: any = {
@@ -391,11 +411,11 @@ export default function InitiateAppraisal() {
       appraisalGroupId: selectedGroup.id,
     };
 
-    if (data.appraisalType !== 'kpi_based') {
+    if (data.appraisalType === 'kpi_based') {
+      submissionData.kraGridEntries = kraGridEntries.map(({ id, ...rest }) => rest);
+    } else {
       delete submissionData.appraisalCycleId;
-      delete submissionData.functionalAreaId;
-      delete submissionData.kraId;
-      delete submissionData.kpiWeightages;
+      delete submissionData.kraGridEntries;
       submissionData.documentFile = uploadedFile;
     }
     
@@ -579,11 +599,9 @@ export default function InitiateAppraisal() {
                           <Select onValueChange={(val) => {
                             field.onChange(val);
                             if (val !== 'kpi_based') {
-                              setSelectedKraId(null);
                               form.setValue('appraisalCycleId', undefined);
-                              form.setValue('functionalAreaId', undefined);
-                              form.setValue('kraId', undefined);
-                              form.setValue('kpiWeightages', []);
+                              form.setValue('kraGridEntries', []);
+                              setKraGridEntries([]);
                             }
                           }} defaultValue={field.value}>
                             <FormControl>
@@ -664,133 +682,131 @@ export default function InitiateAppraisal() {
                           )}
                         />
 
-                        <FormField
-                          control={form.control}
-                          name="functionalAreaId"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Functional Area</FormLabel>
-                              <Select onValueChange={field.onChange} value={field.value || ""}>
-                                <FormControl>
-                                  <SelectTrigger data-testid="select-functional-area">
-                                    <SelectValue placeholder="Select functional area" />
-                                  </SelectTrigger>
-                                </FormControl>
-                                <SelectContent>
-                                  {functionalAreas.map((area) => (
-                                    <SelectItem key={area.id} value={area.id}>
-                                      {area.code} - {area.description}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                              <FormDescription>
-                                Select the functional area
-                              </FormDescription>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-
-                        <FormField
-                          control={form.control}
-                          name="kraId"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>KRA / Goal*</FormLabel>
-                              <Select onValueChange={(val) => {
-                                field.onChange(val);
-                                handleKraSelection(val);
-                              }} value={field.value || ""}>
-                                <FormControl>
-                                  <SelectTrigger data-testid="select-kra">
-                                    <SelectValue placeholder="Select KRA / Goal" />
-                                  </SelectTrigger>
-                                </FormControl>
-                                <SelectContent>
-                                  {kraList.map((kra) => (
-                                    <SelectItem key={kra.id} value={kra.id}>
-                                      {kra.code} - {kra.displayName}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                              <FormDescription>
-                                Select the KRA / Goal for this appraisal
-                              </FormDescription>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-
-                        {selectedKra && (
-                          <div className="space-y-4">
-                            <div className="bg-muted/50 p-4 rounded-lg">
-                              <div className="flex items-center gap-2 mb-2">
-                                <Info className="h-4 w-4 text-blue-500" />
-                                <span className="text-sm font-medium">Review Frequency: {getReviewFrequencyName(selectedKra.reviewFrequencyId)}</span>
-                              </div>
-                            </div>
-
-                            {selectedKra.kpis && selectedKra.kpis.length > 0 && (
-                              <div className="space-y-3">
-                                <h5 className="text-md font-medium">KPIs & Weightage Configuration</h5>
-                                <div className="border rounded-md overflow-hidden">
-                                  <table className="w-full text-sm">
-                                    <thead className="bg-muted">
-                                      <tr>
-                                        <th className="px-3 py-2 text-left font-medium">Code</th>
-                                        <th className="px-3 py-2 text-left font-medium">Name</th>
-                                        <th className="px-3 py-2 text-left font-medium">Input Type</th>
-                                        <th className="px-3 py-2 text-left font-medium">Default Weightage</th>
-                                        <th className="px-3 py-2 text-left font-medium">Weightage (%)*</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {selectedKra.kpis.map((kpi, idx) => {
-                                        const weightageEntry = kpiWeightages.find(w => w.kpiId === kpi.id);
-                                        return (
-                                          <tr key={kpi.id} className="border-t">
-                                            <td className="px-3 py-2">{kpi.code}</td>
-                                            <td className="px-3 py-2">{kpi.name}</td>
-                                            <td className="px-3 py-2 capitalize">{kpi.inputType}</td>
-                                            <td className="px-3 py-2">{kpi.weightageContribution}%</td>
-                                            <td className="px-3 py-2">
-                                              <Input
-                                                type="number"
-                                                min="0"
-                                                max="100"
-                                                className="w-20"
-                                                value={weightageEntry?.weightage ?? 0}
-                                                onChange={(e) => {
-                                                  const newWeightages = [...kpiWeightages];
-                                                  const existingIdx = newWeightages.findIndex(w => w.kpiId === kpi.id);
-                                                  if (existingIdx >= 0) {
-                                                    newWeightages[existingIdx] = { ...newWeightages[existingIdx], weightage: Number(e.target.value) || 0 };
-                                                  } else {
-                                                    newWeightages.push({ kpiId: kpi.id, weightage: Number(e.target.value) || 0 });
-                                                  }
-                                                  form.setValue('kpiWeightages', newWeightages);
-                                                }}
-                                                data-testid={`kpi-weightage-${kpi.id}`}
-                                              />
-                                            </td>
-                                          </tr>
-                                        );
-                                      })}
-                                    </tbody>
-                                  </table>
-                                </div>
-                                <div className={`flex items-center gap-2 text-sm ${totalWeightage === 100 ? 'text-green-600' : 'text-red-600'}`}>
-                                  <span className="font-medium">Total Weightage: {totalWeightage}%</span>
-                                  {totalWeightage !== 100 && (
-                                    <span>(Must equal 100%)</span>
-                                  )}
-                                </div>
-                              </div>
-                            )}
+                        <div className="space-y-3">
+                          <h5 className="text-md font-medium">KRA / Goal Grid</h5>
+                          <div className="border rounded-md overflow-hidden">
+                            <table className="w-full text-sm">
+                              <thead className="bg-muted">
+                                <tr>
+                                  <th className="px-3 py-2 text-left font-medium">Functional Area</th>
+                                  <th className="px-3 py-2 text-left font-medium">KRA / Goal</th>
+                                  <th className="px-3 py-2 text-left font-medium">Review Frequency</th>
+                                  <th className="px-3 py-2 text-left font-medium">KPIs</th>
+                                  <th className="px-3 py-2 text-left font-medium">Weightage (%)</th>
+                                  <th className="px-3 py-2 text-center font-medium w-10"></th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {kraGridEntries.map((entry) => {
+                                  const selectedKraForRow = kraList.find(k => k.id === entry.kraId);
+                                  return (
+                                    <tr key={entry.id} className="border-t">
+                                      <td className="px-3 py-2">
+                                        <Select
+                                          onValueChange={(val) => updateKraGridEntry(entry.id, 'functionalAreaId', val)}
+                                          value={entry.functionalAreaId || ""}
+                                        >
+                                          <SelectTrigger className="w-full min-w-[140px]" data-testid={`grid-fa-${entry.id}`}>
+                                            <SelectValue placeholder="Select..." />
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            {functionalAreas.map((area) => (
+                                              <SelectItem key={area.id} value={area.id}>
+                                                {area.code} - {area.description}
+                                              </SelectItem>
+                                            ))}
+                                          </SelectContent>
+                                        </Select>
+                                      </td>
+                                      <td className="px-3 py-2">
+                                        <Select
+                                          onValueChange={(val) => updateKraGridEntry(entry.id, 'kraId', val)}
+                                          value={entry.kraId || ""}
+                                        >
+                                          <SelectTrigger className="w-full min-w-[160px]" data-testid={`grid-kra-${entry.id}`}>
+                                            <SelectValue placeholder="Select..." />
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            {kraList.map((kra) => (
+                                              <SelectItem key={kra.id} value={kra.id}>
+                                                {kra.code} - {kra.displayName}
+                                              </SelectItem>
+                                            ))}
+                                          </SelectContent>
+                                        </Select>
+                                      </td>
+                                      <td className="px-3 py-2 text-muted-foreground">
+                                        {selectedKraForRow ? getReviewFrequencyName(selectedKraForRow.reviewFrequencyId) : '—'}
+                                      </td>
+                                      <td className="px-3 py-2 text-muted-foreground max-w-[200px]">
+                                        {selectedKraForRow && selectedKraForRow.kpis && selectedKraForRow.kpis.length > 0
+                                          ? selectedKraForRow.kpis.map(kpi => `${kpi.code}: ${kpi.name}`).join(', ')
+                                          : '—'}
+                                      </td>
+                                      <td className="px-3 py-2">
+                                        <Input
+                                          type="number"
+                                          min="0"
+                                          max="100"
+                                          className="w-20"
+                                          value={entry.weightage}
+                                          onChange={(e) => updateKraGridEntry(entry.id, 'weightage', Number(e.target.value) || 0)}
+                                          data-testid={`grid-weightage-${entry.id}`}
+                                        />
+                                      </td>
+                                      <td className="px-3 py-2 text-center">
+                                        <Button
+                                          type="button"
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => removeKraGridEntry(entry.id)}
+                                          data-testid={`grid-remove-${entry.id}`}
+                                        >
+                                          <X className="h-4 w-4 text-destructive" />
+                                        </Button>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                                {kraGridEntries.length === 0 && (
+                                  <tr>
+                                    <td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">
+                                      No KRA / Goal entries added. Click "Add Row" to add one.
+                                    </td>
+                                  </tr>
+                                )}
+                              </tbody>
+                              {kraGridEntries.length > 0 && (
+                                <tfoot className="border-t bg-muted/30">
+                                  <tr>
+                                    <td colSpan={4} className="px-3 py-2 text-right font-medium">Total Weightage:</td>
+                                    <td className="px-3 py-2">
+                                      <span className={`font-semibold ${totalWeightage === 100 ? 'text-green-600' : 'text-red-600'}`}>
+                                        {totalWeightage}%
+                                      </span>
+                                    </td>
+                                    <td className="px-3 py-2">
+                                      {totalWeightage !== 100 && (
+                                        <span className="text-xs text-red-600">Must = 100%</span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                </tfoot>
+                              )}
+                            </table>
                           </div>
-                        )}
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={addKraGridEntry}
+                            className="flex items-center gap-1"
+                            data-testid="add-kra-row"
+                          >
+                            <Plus className="h-4 w-4" />
+                            Add Row
+                          </Button>
+                        </div>
                       </div>
                     )}
 
@@ -1469,13 +1485,15 @@ export default function InitiateAppraisal() {
                       </div>
                     )}
 
-                    {form.watch('publishType') === 'as_per_calendar' && appraisalType === 'kpi_based' && selectedKra && selectedKra.reviewFrequencyId && (
+                    {form.watch('publishType') === 'as_per_calendar' && appraisalType === 'kpi_based' && kraGridEntries.length > 0 && (
                       <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
                         <p className="text-sm text-blue-800 dark:text-blue-200">
-                          <strong>Scheduled Publishing (KPI Based):</strong> The appraisal will be published based on the review frequency of the selected KRA / Goal.
+                          <strong>Scheduled Publishing (KPI Based):</strong> The appraisal will be published based on the review frequency of the selected KRA / Goals.
                         </p>
-                        {(() => {
-                          const freq = reviewFrequencies.find(f => f.id === selectedKra.reviewFrequencyId);
+                        {kraGridEntries.filter(e => e.kraId).map((entry) => {
+                          const kra = kraList.find(k => k.id === entry.kraId);
+                          if (!kra || !kra.reviewFrequencyId) return null;
+                          const freq = reviewFrequencies.find(f => f.id === kra.reviewFrequencyId);
                           const freqDesc = freq ? freq.description : 'Unknown';
                           const daysValue = Number(form.getValues('daysToInitiate')) || 0;
                           
@@ -1503,11 +1521,11 @@ export default function InitiateAppraisal() {
                           }
 
                           return (
-                            <p className="text-sm text-blue-700 dark:text-blue-300 mt-2">
-                              • Example ({freqDesc}): Period ending <strong>{exampleEndDate.toLocaleDateString()}</strong> {whenField === 'before' ? '-' : '+'} {daysValue} {daysValue === 1 ? 'day' : 'days'} = Publish on <strong>{publishDate.toLocaleDateString()}</strong>
+                            <p key={entry.id} className="text-sm text-blue-700 dark:text-blue-300 mt-2">
+                              • {kra.code} - {kra.displayName} ({freqDesc}): Period ending <strong>{exampleEndDate.toLocaleDateString()}</strong> {whenField === 'before' ? '-' : '+'} {daysValue} {daysValue === 1 ? 'day' : 'days'} = Publish on <strong>{publishDate.toLocaleDateString()}</strong>
                             </p>
                           );
-                        })()}
+                        })}
                       </div>
                     )}
                   </div>

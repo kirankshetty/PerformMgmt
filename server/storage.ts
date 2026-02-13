@@ -28,6 +28,7 @@ import {
   appraisalGroupMembers,
   initiatedAppraisals,
   initiatedAppraisalKpiWeights,
+  initiatedAppraisalKraWeights,
   initiatedAppraisalDetailTimings,
   scheduledAppraisalTasks,
   developmentGoals,
@@ -310,6 +311,7 @@ export interface IStorage {
   
   // KPI Weight operations
   createInitiatedAppraisalKpiWeight(weight: any): Promise<any>;
+  createInitiatedAppraisalKraWeight(weight: any): Promise<any>;
 
   // Scheduled Appraisal Task operations
   createScheduledAppraisalTask(task: InsertScheduledAppraisalTask): Promise<ScheduledAppraisalTask>;
@@ -2703,6 +2705,11 @@ export class DatabaseStorage implements IStorage {
 
   async createInitiatedAppraisalKpiWeight(weight: any): Promise<any> {
     const [newWeight] = await db.insert(initiatedAppraisalKpiWeights).values(weight).returning();
+    return newWeight;
+  }
+
+  async createInitiatedAppraisalKraWeight(weight: any): Promise<any> {
+    const [newWeight] = await db.insert(initiatedAppraisalKraWeights).values(weight).returning();
     return newWeight;
   }
 
