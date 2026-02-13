@@ -46,6 +46,7 @@ export const categoryEnum = pgEnum('category', ['employee', 'manager']);
 
 // Publish type enum
 export const publishTypeEnum = pgEnum('publish_type', ['now', 'as_per_calendar']);
+export const whenFieldEnum = pgEnum('when_field', ['after', 'before']);
 
 // Appraisal type enum
 export const appraisalTypeEnum = pgEnum('appraisal_type', [
@@ -484,24 +485,39 @@ export const initiatedAppraisals = pgTable("initiated_appraisals", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   appraisalGroupId: varchar("appraisal_group_id").notNull(),
   appraisalType: appraisalTypeEnum("appraisal_type").notNull(),
-  questionnaireTemplateIds: text("questionnaire_template_ids").array().default(sql`ARRAY[]::text[]`), // For questionnaire_based
-  documentUrl: varchar("document_url"), // For uploaded documents (MBO/KPI)
+  questionnaireTemplateIds: text("questionnaire_template_ids").array().default(sql`ARRAY[]::text[]`),
+  documentUrl: varchar("document_url"),
+  appraisalCycleId: varchar("appraisal_cycle_id"),
+  functionalAreaId: varchar("functional_area_id"),
+  kraId: varchar("kra_id"),
   frequencyCalendarId: varchar("frequency_calendar_id"),
-  daysToInitiate: integer("days_to_initiate").default(0), // Days after calendar period end
-  daysToClose: integer("days_to_close").default(30), // Days after calendar period end  
-  numberOfReminders: integer("number_of_reminders").default(3), // 1-10 reminders
+  daysToInitiate: integer("days_to_initiate").default(0),
+  whenField: whenFieldEnum("when_field").default('after'),
+  daysToClose: integer("days_to_close").default(30),
+  numberOfReminders: integer("number_of_reminders").default(3),
   excludeTenureLessThanYear: boolean("exclude_tenure_less_than_year").default(false),
-  excludedEmployeeIds: text("excluded_employee_ids").array().default(sql`ARRAY[]::text[]`), // Specific excluded employees
+  excludedEmployeeIds: text("excluded_employee_ids").array().default(sql`ARRAY[]::text[]`),
   status: appraisalCycleStatusEnum("status").default('draft'),
   makePublic: boolean("make_public").default(false),
   publishType: publishTypeEnum("publish_type").default('now'),
-  createdById: varchar("created_by_id").notNull(), // HR Manager who created
+  createdById: varchar("created_by_id").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
   index("initiated_appraisals_group_id_idx").on(table.appraisalGroupId),
   index("initiated_appraisals_created_by_id_idx").on(table.createdById),
   check("initiated_appraisals_template_check", sql`(${table.appraisalType} NOT IN ('questionnaire_based', 'mbo_based')) OR (array_length(${table.questionnaireTemplateIds}, 1) > 0 OR ${table.documentUrl} IS NOT NULL)`),
+]);
+
+export const initiatedAppraisalKpiWeights = pgTable("initiated_appraisal_kpi_weights", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  initiatedAppraisalId: varchar("initiated_appraisal_id").notNull(),
+  kpiId: varchar("kpi_id").notNull(),
+  kraId: varchar("kra_id").notNull(),
+  weightage: integer("weightage").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("initiated_appraisal_kpi_weights_appraisal_idx").on(table.initiatedAppraisalId),
 ]);
 
 // Initiated Appraisal Detail Timings - Per frequency calendar detail timing configurations
@@ -1078,6 +1094,11 @@ export const insertInitiatedAppraisalSchema = createInsertSchema(initiatedApprai
   updatedAt: true,
 });
 
+export const insertInitiatedAppraisalKpiWeightSchema = createInsertSchema(initiatedAppraisalKpiWeights).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertInitiatedAppraisalDetailTimingSchema = createInsertSchema(initiatedAppraisalDetailTimings).omit({
   id: true,
   createdAt: true,
@@ -1097,6 +1118,8 @@ export type AppraisalGroupMember = typeof appraisalGroupMembers.$inferSelect;
 export type InsertAppraisalGroupMember = z.infer<typeof insertAppraisalGroupMemberSchema>;
 export type InitiatedAppraisal = typeof initiatedAppraisals.$inferSelect;
 export type InsertInitiatedAppraisal = z.infer<typeof insertInitiatedAppraisalSchema>;
+export type InitiatedAppraisalKpiWeight = typeof initiatedAppraisalKpiWeights.$inferSelect;
+export type InsertInitiatedAppraisalKpiWeight = z.infer<typeof insertInitiatedAppraisalKpiWeightSchema>;
 export type InitiatedAppraisalDetailTiming = typeof initiatedAppraisalDetailTimings.$inferSelect;
 export type InsertInitiatedAppraisalDetailTiming = z.infer<typeof insertInitiatedAppraisalDetailTimingSchema>;
 export type ScheduledAppraisalTask = typeof scheduledAppraisalTasks.$inferSelect;

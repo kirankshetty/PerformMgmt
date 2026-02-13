@@ -4228,10 +4228,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ? parsedData.questionnaireTemplateIds 
           : [],
         documentUrl: documentUrl || parsedData.documentUrl || null,
+        appraisalCycleId: parsedData.appraisalCycleId || null,
+        functionalAreaId: parsedData.functionalAreaId || null,
+        kraId: parsedData.kraId || null,
+        kpiWeightages: parsedData.kpiWeightages || [],
         frequencyCalendarId: parsedData.frequencyCalendarId || null,
-        selectedCalendarDetailIds: parsedData.selectedCalendarDetailIds || [], // Selected calendar detail IDs for multi-select
-        calendarDetailTimings: parsedData.calendarDetailTimings || [], // Add calendar detail timings
+        selectedCalendarDetailIds: parsedData.selectedCalendarDetailIds || [],
+        calendarDetailTimings: parsedData.calendarDetailTimings || [],
         daysToInitiate: parsedData.daysToInitiate || 0,
+        whenField: parsedData.whenField || 'after',
         daysToClose: parsedData.daysToClose || 30,
         numberOfReminders: parsedData.numberOfReminders || 3,
         excludeTenureLessThanYear: parsedData.excludeTenureLessThanYear || false,
@@ -4255,12 +4260,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "At least one questionnaire template is required for this appraisal type" });
       }
 
-      if (validatedData.appraisalType === 'kpi_based' && !validatedData.documentUrl) {
-        return res.status(400).json({ message: "Document is required for KPI-based appraisals" });
+      if (validatedData.appraisalType === 'kpi_based') {
+        if (!validatedData.appraisalCycleId) {
+          return res.status(400).json({ message: "Appraisal Cycle is required for KPI-based appraisals" });
+        }
+        if (!validatedData.kraId) {
+          return res.status(400).json({ message: "KRA / Goal is required for KPI-based appraisals" });
+        }
+        if (validatedData.kpiWeightages && validatedData.kpiWeightages.length > 0) {
+          const totalWeightage = validatedData.kpiWeightages.reduce((sum: number, kw: any) => sum + (Number(kw.weightage) || 0), 0);
+          if (totalWeightage !== 100) {
+            return res.status(400).json({ message: "Total KPI weightage must equal 100%" });
+          }
+        }
       }
 
       // Create the initiated appraisal
       const initiatedAppraisal = await storage.createInitiatedAppraisal(validatedData, requestingUserId);
+
+      // Save KPI weightages for KPI-based appraisals
+      if (validatedData.appraisalType === 'kpi_based' && validatedData.kpiWeightages && validatedData.kpiWeightages.length > 0) {
+        for (const kw of validatedData.kpiWeightages) {
+          await storage.createInitiatedAppraisalKpiWeight({
+            initiatedAppraisalId: initiatedAppraisal.id,
+            kpiId: kw.kpiId,
+            kraId: validatedData.kraId!,
+            weightage: Number(kw.weightage),
+          });
+        }
+      }
       
       let evaluationsCreated = 0;
       let emailsSent = 0;
@@ -4375,7 +4403,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
               scheduledDate = new Date(year, month - 1, day);
             }
             
-            scheduledDate.setDate(scheduledDate.getDate() + Number(timingConfig.daysToInitiate));
+            const daysToInit = Number(timingConfig.daysToInitiate);
+            const whenDir = timingConfig.whenField || validatedData.whenField || 'after';
+            if (whenDir === 'before') {
+              scheduledDate.setDate(scheduledDate.getDate() - daysToInit);
+            } else {
+              scheduledDate.setDate(scheduledDate.getDate() + daysToInit);
+            }
             
             // Create the scheduled task
             await storage.createScheduledAppraisalTask({
