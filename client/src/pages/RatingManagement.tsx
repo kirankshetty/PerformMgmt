@@ -252,10 +252,10 @@ export default function RatingManagement() {
           </div>
           <div className="flex justify-between text-xs text-muted-foreground px-1">
             <span>1</span>
+            <span>3</span>
             <span>5</span>
+            <span>7</span>
             <span>10</span>
-            <span>15</span>
-            <span>20</span>
           </div>
         </div>
       </div>
