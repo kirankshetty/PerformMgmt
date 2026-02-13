@@ -250,10 +250,10 @@ export default function RatingManagement() {
               className="w-full"
             />
           </div>
-          <div className="flex justify-between text-xs text-muted-foreground px-1">
-            <span>1</span>
-            <span>5</span>
-            <span>10</span>
+          <div className="relative text-xs text-muted-foreground h-5">
+            <span className="absolute left-0">1</span>
+            <span className="absolute left-1/2 -translate-x-1/2">5</span>
+            <span className="absolute right-0">10</span>
           </div>
         </div>
       </div>
