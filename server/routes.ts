@@ -3234,8 +3234,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Validate KPI array
   function validateKpis(kpiList: any[]): void {
     if (!Array.isArray(kpiList)) return;
+    const kpiSchemaWithoutKraId = insertKpiSchema.omit({ kraId: true });
     for (const kpi of kpiList) {
-      insertKpiSchema.parse(kpi);
+      kpiSchemaWithoutKraId.parse(kpi);
     }
   }
 
@@ -3307,11 +3308,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { kpis: kpiList, id: _id, createdById: _createdById, createdAt: _createdAt, ...safeData } = req.body;
       const parsedKra = insertKraSchema.partial().parse(safeData);
 
-      const kpisWithKraId = (kpiList || []).map((kpi: any) => ({ ...kpi, kraId: id }));
-      if (kpisWithKraId.length > 0) {
-        validateKpis(kpisWithKraId);
+      if (kpiList && kpiList.length > 0) {
+        validateKpis(kpiList);
       }
 
+      const kpisWithKraId = (kpiList || []).map((kpi: any) => ({ ...kpi, kraId: id }));
       const kra = await storage.updateKra(id, parsedKra, kpisWithKraId, ownerId);
       const fullKra = await storage.getKraWithKpis(kra.id, ownerId);
       res.json(fullKra ? { ...fullKra.kra, kpis: fullKra.kpis } : kra);
