@@ -3376,15 +3376,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "User not found" });
       }
       
-      let adminId = requestingUserId;
+      const creatorIds: string[] = [requestingUserId];
       if (requestingUser.role === 'hr_manager' && requestingUser.companyId) {
         const companyAdmins = await storage.getUsers({ role: 'admin', companyId: requestingUser.companyId });
-        if (companyAdmins && companyAdmins.length > 0) {
-          adminId = companyAdmins[0].id;
+        for (const admin of companyAdmins) {
+          if (!creatorIds.includes(admin.id)) creatorIds.push(admin.id);
+        }
+        const companyHrManagers = await storage.getUsers({ role: 'hr_manager', companyId: requestingUser.companyId });
+        for (const hr of companyHrManagers) {
+          if (!creatorIds.includes(hr.id)) creatorIds.push(hr.id);
+        }
+      } else if (requestingUser.role === 'admin' && requestingUser.companyId) {
+        const companyHrManagers = await storage.getUsers({ role: 'hr_manager', companyId: requestingUser.companyId });
+        for (const hr of companyHrManagers) {
+          if (!creatorIds.includes(hr.id)) creatorIds.push(hr.id);
         }
       }
       
-      const ratingsList = await storage.getRatings(adminId);
+      const allRatings = [];
+      for (const id of creatorIds) {
+        const ratings = await storage.getRatings(id);
+        allRatings.push(...ratings);
+      }
+      const ratingsList = allRatings.filter((r, idx, self) => self.findIndex(x => x.id === r.id) === idx);
+      ratingsList.sort((a, b) => a.code.localeCompare(b.code));
       
       const ratingsWithDetails = await Promise.all(
         ratingsList.map(async (rating) => {
