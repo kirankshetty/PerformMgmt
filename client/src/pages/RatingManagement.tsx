@@ -251,8 +251,8 @@ export default function RatingManagement() {
             />
           </div>
           <div className="relative text-xs text-muted-foreground h-5">
-            <span className="absolute left-0">1</span>
-            <span className="absolute left-1/2 -translate-x-1/2">5</span>
+            <span className="absolute" style={{ left: '0%' }}>1</span>
+            <span className="absolute -translate-x-1/2" style={{ left: '44.4%' }}>5</span>
             <span className="absolute right-0">10</span>
           </div>
         </div>
