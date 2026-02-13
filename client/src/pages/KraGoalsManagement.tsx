@@ -208,7 +208,7 @@ export default function KraGoalsManagement() {
   const getFrequencyName = (id: string | null) => {
     if (!id) return "Not set";
     const freq = reviewFrequencies.find(f => f.id === id);
-    return freq ? `${freq.code} - ${freq.description}` : "Unknown";
+    return freq ? freq.code : "Unknown";
   };
 
   const renderForm = () => (
@@ -256,7 +256,7 @@ export default function KraGoalsManagement() {
                 <SelectItem value="none">None</SelectItem>
                 {reviewFrequencies.map(freq => (
                   <SelectItem key={freq.id} value={freq.id}>
-                    {freq.code} - {freq.description}
+                    {freq.code}
                   </SelectItem>
                 ))}
               </SelectContent>
