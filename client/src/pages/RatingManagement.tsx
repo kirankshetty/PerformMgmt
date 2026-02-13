@@ -252,9 +252,7 @@ export default function RatingManagement() {
           </div>
           <div className="flex justify-between text-xs text-muted-foreground px-1">
             <span>1</span>
-            <span>3</span>
             <span>5</span>
-            <span>7</span>
             <span>10</span>
           </div>
         </div>
@@ -437,16 +435,14 @@ export default function RatingManagement() {
                 <CardContent>
                   {rating.details && rating.details.length > 0 && (
                     <div className="space-y-2">
-                      <div className="grid grid-cols-4 gap-2 text-xs font-medium text-muted-foreground uppercase tracking-wider pb-1 border-b">
+                      <div className="grid grid-cols-3 gap-2 text-xs font-medium text-muted-foreground uppercase tracking-wider pb-1 border-b">
                         <span>Value</span>
-                        <span>Code</span>
                         <span>Name</span>
                         <span>Description</span>
                       </div>
                       {rating.details.map((detail, idx) => (
-                        <div key={detail.id} className="grid grid-cols-4 gap-2 text-sm py-1">
+                        <div key={detail.id} className="grid grid-cols-3 gap-2 text-sm py-1">
                           <span className="font-medium">{rating.ratingScaleFrom + idx}</span>
-                          <span>{detail.code}</span>
                           <span>{detail.name}</span>
                           <span className="text-muted-foreground">{detail.description || '-'}</span>
                         </div>
