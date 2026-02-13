@@ -467,6 +467,11 @@ export default function KraGoalsManagement() {
                         {kra.kpis && kra.kpis.length > 0 && (
                           <Badge variant="outline">{kra.kpis.length} KPI{kra.kpis.length > 1 ? 's' : ''}</Badge>
                         )}
+                        {kra.kpis && kra.kpis.length > 0 && (
+                          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800 font-semibold">
+                            Weightage: {kra.kpis.reduce((sum: number, kpi: any) => sum + (kpi.weightageContribution || 0), 0)}%
+                          </Badge>
+                        )}
                         {expandedCards.has(kra.id) ? (
                           <ChevronUp className="w-4 h-4 text-gray-400" />
                         ) : (
