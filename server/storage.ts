@@ -313,6 +313,7 @@ export interface IStorage {
   createInitiatedAppraisalKpiWeight(weight: any): Promise<any>;
   createInitiatedAppraisalKraWeight(weight: any): Promise<any>;
   getEmployeeIdsWithExistingEvaluations(appraisalGroupId: string, excludeAppraisalId: string): Promise<Set<string>>;
+  getEmployeeIdsWithExistingEvaluationsForCalendarDetails(appraisalGroupId: string, excludeAppraisalId: string, frequencyCalendarDetailIds: string[]): Promise<Set<string>>;
 
   // Scheduled Appraisal Task operations
   createScheduledAppraisalTask(task: InsertScheduledAppraisalTask): Promise<ScheduledAppraisalTask>;
@@ -2731,6 +2732,49 @@ export class DatabaseStorage implements IStorage {
       .from(evaluations)
       .where(inArray(evaluations.initiatedAppraisalId, existingAppraisalIds));
     
+    return new Set(existingEvals.map(e => e.employeeId));
+  }
+
+  async getEmployeeIdsWithExistingEvaluationsForCalendarDetails(
+    appraisalGroupId: string,
+    excludeAppraisalId: string,
+    frequencyCalendarDetailIds: string[]
+  ): Promise<Set<string>> {
+    if (frequencyCalendarDetailIds.length === 0) {
+      return new Set<string>();
+    }
+
+    const existingAppraisals = await db.select({ id: initiatedAppraisals.id })
+      .from(initiatedAppraisals)
+      .where(and(
+        eq(initiatedAppraisals.appraisalGroupId, appraisalGroupId),
+        sql`${initiatedAppraisals.id} != ${excludeAppraisalId}`
+      ));
+
+    if (existingAppraisals.length === 0) {
+      return new Set<string>();
+    }
+
+    const existingAppraisalIds = existingAppraisals.map(a => a.id);
+
+    const reviewCyclePatterns = [];
+    for (const appraisalId of existingAppraisalIds) {
+      for (const detailId of frequencyCalendarDetailIds) {
+        reviewCyclePatterns.push(`initiated-appraisal-${appraisalId}-${detailId}`);
+      }
+    }
+
+    if (reviewCyclePatterns.length === 0) {
+      return new Set<string>();
+    }
+
+    const existingEvals = await db.select({ employeeId: evaluations.employeeId })
+      .from(evaluations)
+      .where(and(
+        inArray(evaluations.initiatedAppraisalId, existingAppraisalIds),
+        inArray(evaluations.reviewCycleId, reviewCyclePatterns)
+      ));
+
     return new Set(existingEvals.map(e => e.employeeId));
   }
 

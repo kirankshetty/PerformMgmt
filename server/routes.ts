@@ -4373,11 +4373,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
           let existingEvaluationEmployeeIds = new Set<string>();
           if (validatedData.publishForNewOnly) {
-            existingEvaluationEmployeeIds = await storage.getEmployeeIdsWithExistingEvaluations(
-              validatedData.appraisalGroupId,
-              initiatedAppraisal.id
-            );
-            console.log(`Publish for new only: Found ${existingEvaluationEmployeeIds.size} employees with existing evaluations`);
+            const isCalendarDetailLevel = validatedData.appraisalType === 'questionnaire_based' || validatedData.appraisalType === 'mbo_based';
+            if (isCalendarDetailLevel && validatedData.frequencyCalendarId) {
+              let detailIds = validatedData.selectedCalendarDetailIds || [];
+              if (detailIds.length === 0) {
+                const allDetails = await storage.getFrequencyCalendarDetailsByCalendarId(validatedData.frequencyCalendarId);
+                detailIds = allDetails.map(d => d.id);
+              }
+              if (detailIds.length > 0) {
+                existingEvaluationEmployeeIds = await storage.getEmployeeIdsWithExistingEvaluationsForCalendarDetails(
+                  validatedData.appraisalGroupId,
+                  initiatedAppraisal.id,
+                  detailIds
+                );
+                console.log(`Publish for new only (by calendar details): Found ${existingEvaluationEmployeeIds.size} employees with existing evaluations for calendar details`);
+              }
+            } else {
+              existingEvaluationEmployeeIds = await storage.getEmployeeIdsWithExistingEvaluations(
+                validatedData.appraisalGroupId,
+                initiatedAppraisal.id
+              );
+              console.log(`Publish for new only (by group): Found ${existingEvaluationEmployeeIds.size} employees with existing evaluations`);
+            }
           }
           
           // Create evaluations for each active member
@@ -4589,11 +4606,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
           let existingEvalEmployeeIds = new Set<string>();
           if (appraisal.publishForNewOnly) {
-            existingEvalEmployeeIds = await storage.getEmployeeIdsWithExistingEvaluations(
-              appraisal.appraisalGroupId,
-              appraisal.id
-            );
-            console.log(`Calendar publish - new only: Found ${existingEvalEmployeeIds.size} employees with existing evaluations`);
+            const isCalendarDetailLevel = appraisal.appraisalType === 'questionnaire_based' || appraisal.appraisalType === 'mbo_based';
+            if (isCalendarDetailLevel) {
+              existingEvalEmployeeIds = await storage.getEmployeeIdsWithExistingEvaluationsForCalendarDetails(
+                appraisal.appraisalGroupId,
+                appraisal.id,
+                [task.frequencyCalendarDetailId]
+              );
+              console.log(`Calendar publish - new only (by calendar detail ${task.frequencyCalendarDetailId}): Found ${existingEvalEmployeeIds.size} employees with existing evaluations`);
+            } else {
+              existingEvalEmployeeIds = await storage.getEmployeeIdsWithExistingEvaluations(
+                appraisal.appraisalGroupId,
+                appraisal.id
+              );
+              console.log(`Calendar publish - new only (by group): Found ${existingEvalEmployeeIds.size} employees with existing evaluations`);
+            }
           }
           
           let evaluationsCreated = 0;
