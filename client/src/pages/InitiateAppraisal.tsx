@@ -372,7 +372,7 @@ export default function InitiateAppraisal() {
   const getReviewFrequencyName = (id: string | null | undefined) => {
     if (!id) return "Not set";
     const freq = reviewFrequencies.find(f => f.id === id);
-    return freq ? `${freq.code} - ${freq.description}` : "Unknown";
+    return freq ? freq.code : "Unknown";
   };
 
   const onSubmit = (data: InitiateAppraisalForm) => {
