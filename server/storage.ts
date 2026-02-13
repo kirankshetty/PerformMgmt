@@ -14,6 +14,8 @@ import {
   grades,
   businessRoles,
   functionalAreas,
+  kras,
+  kpis,
   ratings,
   ratingDetails,
   departments,
@@ -61,6 +63,10 @@ import {
   type InsertBusinessRole,
   type FunctionalArea,
   type InsertFunctionalArea,
+  type Kra,
+  type InsertKra,
+  type Kpi,
+  type InsertKpi,
   type Rating,
   type InsertRating,
   type RatingDetail,
@@ -220,6 +226,15 @@ export interface IStorage {
   createFunctionalArea(area: InsertFunctionalArea, createdById: string): Promise<FunctionalArea>;
   updateFunctionalArea(id: string, area: Partial<InsertFunctionalArea>, createdById: string): Promise<FunctionalArea>;
   deleteFunctionalArea(id: string, createdById: string): Promise<void>;
+
+  // KRA / Goals operations
+  getKras(createdById: string): Promise<Kra[]>;
+  getKra(id: string, createdById: string): Promise<Kra | undefined>;
+  getKraWithKpis(id: string, createdById: string): Promise<{ kra: Kra; kpis: Kpi[] } | undefined>;
+  createKra(kra: InsertKra, kpiList: InsertKpi[], createdById: string): Promise<Kra>;
+  updateKra(id: string, kra: Partial<InsertKra>, kpiList: InsertKpi[], createdById: string): Promise<Kra>;
+  deleteKra(id: string, createdById: string): Promise<void>;
+  getKpisByKraId(kraId: string): Promise<Kpi[]>;
 
   // Rating operations - Administrator isolated
   getRatings(createdById: string): Promise<Rating[]>;
@@ -1649,6 +1664,108 @@ export class DatabaseStorage implements IStorage {
     
     if (result.rowCount === 0) {
       throw new Error('Functional area not found or access denied');
+    }
+  }
+
+  // KRA / Goals operations
+  async getKras(createdById: string): Promise<Kra[]> {
+    return await db.select().from(kras).where(
+      eq(kras.createdById, createdById)
+    ).orderBy(asc(kras.code));
+  }
+
+  async getKra(id: string, createdById: string): Promise<Kra | undefined> {
+    const [kra] = await db.select().from(kras).where(
+      and(
+        eq(kras.id, id),
+        eq(kras.createdById, createdById)
+      )
+    );
+    return kra;
+  }
+
+  async getKraWithKpis(id: string, createdById: string): Promise<{ kra: Kra; kpis: Kpi[] } | undefined> {
+    const kra = await this.getKra(id, createdById);
+    if (!kra) return undefined;
+    const kpiList = await this.getKpisByKraId(id);
+    return { kra, kpis: kpiList };
+  }
+
+  async getKpisByKraId(kraId: string): Promise<Kpi[]> {
+    return await db.select().from(kpis).where(
+      eq(kpis.kraId, kraId)
+    ).orderBy(asc(kpis.code));
+  }
+
+  async createKra(kra: InsertKra, kpiList: InsertKpi[], createdById: string): Promise<Kra> {
+    const [newKra] = await db.insert(kras).values({
+      ...kra,
+      createdById,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }).returning();
+
+    if (kpiList.length > 0) {
+      await db.insert(kpis).values(
+        kpiList.map(kpi => ({
+          ...kpi,
+          kraId: newKra.id,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }))
+      );
+    }
+
+    return newKra;
+  }
+
+  async updateKra(id: string, kraData: Partial<InsertKra>, kpiList: InsertKpi[], createdById: string): Promise<Kra> {
+    const [updatedKra] = await db
+      .update(kras)
+      .set({
+        ...kraData,
+        updatedAt: new Date()
+      })
+      .where(
+        and(
+          eq(kras.id, id),
+          eq(kras.createdById, createdById)
+        )
+      )
+      .returning();
+
+    if (!updatedKra) {
+      throw new Error('KRA not found or access denied');
+    }
+
+    await db.delete(kpis).where(eq(kpis.kraId, id));
+    if (kpiList.length > 0) {
+      await db.insert(kpis).values(
+        kpiList.map(kpi => ({
+          ...kpi,
+          kraId: id,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }))
+      );
+    }
+
+    return updatedKra;
+  }
+
+  async deleteKra(id: string, createdById: string): Promise<void> {
+    await db.delete(kpis).where(eq(kpis.kraId, id));
+    const result = await db
+      .delete(kras)
+      .where(
+        and(
+          eq(kras.id, id),
+          eq(kras.createdById, createdById)
+        )
+      );
+
+    if (result.rowCount === 0) {
+      throw new Error('KRA not found or access denied');
     }
   }
 

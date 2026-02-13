@@ -34,6 +34,7 @@ import ManagerSubmissions from "@/pages/ManagerSubmissions";
 import Meetings from "@/pages/Meetings";
 import HRMeetingsView from "@/pages/HRMeetingsView";
 import CalibrateRatings from "@/pages/CalibrateRatings";
+import KraGoalsManagement from "@/pages/KraGoalsManagement";
 import Analytics from "@/pages/Analytics";
 import DevelopmentGoals from "@/pages/DevelopmentGoals";
 import MemberDevelopmentGoals from "@/pages/MemberDevelopmentGoals";
@@ -70,6 +71,7 @@ function Router() {
           <Route path="/functional-areas" component={FunctionalAreaManagement} />
           <Route path="/functional-areas-hr" component={FunctionalAreaManagement} />
           <Route path="/ratings" component={RatingManagement} />
+          <Route path="/kra-goals" component={KraGoalsManagement} />
           <Route path="/appraisal-cycles" component={AppraisalCycleManagement} />
           <Route path="/review-frequencies" component={ReviewFrequencyManagement} />
           <Route path="/frequency-calendars" component={FrequencyCalendarManagement} />

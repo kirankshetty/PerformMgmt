@@ -319,6 +319,40 @@ export const functionalAreas = pgTable("functional_areas", {
   index("functional_areas_created_by_id_idx").on(table.createdById),
 ]);
 
+// KPI Input Type enum
+export const kpiInputTypeEnum = pgEnum('kpi_input_type', ['number', 'value', 'date', 'percentage']);
+
+// KRA (Key Result Areas) / Goals table
+export const kras = pgTable("kras", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  code: varchar("code").notNull(),
+  displayName: varchar("display_name").notNull(),
+  description: text("description"),
+  reviewFrequencyId: varchar("review_frequency_id"),
+  status: statusEnum("status").default('active'),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  createdById: varchar("created_by_id").notNull(),
+}, (table) => [
+  unique().on(table.createdById, table.code),
+  index("kras_created_by_id_idx").on(table.createdById),
+]);
+
+// KPI (Key Performance Indicators) table - child of KRA
+export const kpis = pgTable("kpis", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  kraId: varchar("kra_id").notNull(),
+  code: varchar("code").notNull(),
+  name: varchar("name").notNull(),
+  inputType: kpiInputTypeEnum("input_type").default('number').notNull(),
+  weightageContribution: integer("weightage_contribution").default(100).notNull(),
+  status: statusEnum("status").default('active'),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("kpis_kra_id_idx").on(table.kraId),
+]);
+
 // Rating Type enum
 export const ratingTypeEnum = pgEnum('rating_type', ['numeric', 'text']);
 
@@ -827,6 +861,19 @@ export const insertFunctionalAreaSchema = createInsertSchema(functionalAreas).om
   createdById: true,
 });
 
+export const insertKraSchema = createInsertSchema(kras).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  createdById: true,
+});
+
+export const insertKpiSchema = createInsertSchema(kpis).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 export const insertRatingSchema = createInsertSchema(ratings).omit({
   id: true,
   createdAt: true,
@@ -964,6 +1011,10 @@ export type BusinessRole = typeof businessRoles.$inferSelect;
 export type InsertBusinessRole = z.infer<typeof insertBusinessRoleSchema>;
 export type FunctionalArea = typeof functionalAreas.$inferSelect;
 export type InsertFunctionalArea = z.infer<typeof insertFunctionalAreaSchema>;
+export type Kra = typeof kras.$inferSelect;
+export type InsertKra = z.infer<typeof insertKraSchema>;
+export type Kpi = typeof kpis.$inferSelect;
+export type InsertKpi = z.infer<typeof insertKpiSchema>;
 export type Rating = typeof ratings.$inferSelect;
 export type InsertRating = z.infer<typeof insertRatingSchema>;
 export type RatingDetail = typeof ratingDetails.$inferSelect;

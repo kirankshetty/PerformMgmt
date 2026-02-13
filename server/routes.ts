@@ -17,6 +17,8 @@ import {
   insertGradeSchema,
   insertBusinessRoleSchema,
   insertFunctionalAreaSchema,
+  insertKraSchema,
+  insertKpiSchema,
   insertRatingSchema,
   insertDepartmentSchema,
   insertAppraisalCycleSchema,
@@ -3182,6 +3184,155 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting functional area:", error);
       res.status(500).json({ message: "Failed to delete functional area" });
+    }
+  });
+
+  // KRA / Goals management routes
+  // Helper: resolve KRA owner ID (HR managers use their company admin's ID)
+  async function resolveKraOwnerId(userId: string): Promise<string> {
+    const user = await storage.getUser(userId);
+    if (!user) throw new Error("User not found");
+    if (user.role === 'hr_manager' && user.companyId) {
+      const companyAdmins = await storage.getUsers({ role: 'admin', companyId: user.companyId });
+      if (companyAdmins && companyAdmins.length > 0) {
+        return companyAdmins[0].id;
+      }
+    }
+    return userId;
+  }
+
+  // Validate KPI array
+  function validateKpis(kpiList: any[]): void {
+    if (!Array.isArray(kpiList)) return;
+    for (const kpi of kpiList) {
+      insertKpiSchema.parse(kpi);
+    }
+  }
+
+  app.get('/api/kras', isAuthenticated, requireRoles(['admin', 'hr_manager']), async (req: any, res) => {
+    try {
+      const ownerId = await resolveKraOwnerId(req.user.claims.sub);
+
+      const kraList = await storage.getKras(ownerId);
+      const krasWithKpis = await Promise.all(
+        kraList.map(async (kra) => {
+          const kpiList = await storage.getKpisByKraId(kra.id);
+          return { ...kra, kpis: kpiList };
+        })
+      );
+      res.json(krasWithKpis);
+    } catch (error) {
+      console.error("Error fetching KRAs:", error);
+      res.status(500).json({ message: "Failed to fetch KRAs" });
+    }
+  });
+
+  app.get('/api/kras/:id', isAuthenticated, requireRoles(['admin', 'hr_manager']), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const ownerId = await resolveKraOwnerId(req.user.claims.sub);
+      const result = await storage.getKraWithKpis(id, ownerId);
+      if (!result) {
+        return res.status(404).json({ message: "KRA not found" });
+      }
+      res.json({ ...result.kra, kpis: result.kpis });
+    } catch (error) {
+      console.error("Error fetching KRA:", error);
+      res.status(500).json({ message: "Failed to fetch KRA" });
+    }
+  });
+
+  app.post('/api/kras', isAuthenticated, requireRoles(['admin', 'hr_manager']), async (req: any, res) => {
+    try {
+      const { kpis: kpiList, ...kraData } = req.body;
+      const parsedKra = insertKraSchema.parse(kraData);
+      const ownerId = await resolveKraOwnerId(req.user.claims.sub);
+
+      if (kpiList && kpiList.length > 0) {
+        validateKpis(kpiList);
+      }
+
+      const kra = await storage.createKra(parsedKra, kpiList || [], ownerId);
+      const fullKra = await storage.getKraWithKpis(kra.id, ownerId);
+      res.status(201).json(fullKra ? { ...fullKra.kra, kpis: fullKra.kpis } : kra);
+    } catch (error) {
+      console.error("Error creating KRA:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to create KRA" });
+    }
+  });
+
+  app.put('/api/kras/:id', isAuthenticated, requireRoles(['admin', 'hr_manager']), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const ownerId = await resolveKraOwnerId(req.user.claims.sub);
+
+      const existingKra = await storage.getKra(id, ownerId);
+      if (!existingKra) {
+        return res.status(404).json({ message: "KRA not found" });
+      }
+
+      const { kpis: kpiList, id: _id, createdById: _createdById, createdAt: _createdAt, ...safeData } = req.body;
+      const parsedKra = insertKraSchema.partial().parse(safeData);
+
+      if (kpiList && kpiList.length > 0) {
+        validateKpis(kpiList);
+      }
+
+      const kra = await storage.updateKra(id, parsedKra, kpiList || [], ownerId);
+      const fullKra = await storage.getKraWithKpis(kra.id, ownerId);
+      res.json(fullKra ? { ...fullKra.kra, kpis: fullKra.kpis } : kra);
+    } catch (error) {
+      console.error("Error updating KRA:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to update KRA" });
+    }
+  });
+
+  app.delete('/api/kras/:id', isAuthenticated, requireRoles(['admin', 'hr_manager']), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const ownerId = await resolveKraOwnerId(req.user.claims.sub);
+
+      const existingKra = await storage.getKra(id, ownerId);
+      if (!existingKra) {
+        return res.status(404).json({ message: "KRA not found" });
+      }
+
+      await storage.deleteKra(id, ownerId);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting KRA:", error);
+      res.status(500).json({ message: "Failed to delete KRA" });
+    }
+  });
+
+  // Review frequencies for KRA form dropdown (HR manager access)
+  app.get('/api/review-frequencies-all', isAuthenticated, requireRoles(['admin', 'hr_manager']), async (req: any, res) => {
+    try {
+      const requestingUserId = req.user.claims.sub;
+      const requestingUser = await storage.getUser(requestingUserId);
+      if (!requestingUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      let adminId = requestingUserId;
+      if (requestingUser.role === 'hr_manager' && requestingUser.companyId) {
+        const companyAdmins = await storage.getUsers({ role: 'admin', companyId: requestingUser.companyId });
+        if (companyAdmins && companyAdmins.length > 0) {
+          adminId = companyAdmins[0].id;
+        }
+      }
+
+      const frequencies = await storage.getReviewFrequencies(adminId);
+      res.json(frequencies);
+    } catch (error) {
+      console.error("Error fetching review frequencies:", error);
+      res.status(500).json({ message: "Failed to fetch review frequencies" });
     }
   });
 

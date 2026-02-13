@@ -56,6 +56,7 @@ const navItems: NavItem[] = [
   { href: "/initiate-appraisal", label: "Initiate Appraisal Cycle", icon: Play, roles: ["hr_manager"] },
   { href: "/review-appraisal", label: "Review Progress", icon: Search, roles: ["hr_manager"] },
   { href: "/hr-meetings", label: "View Meetings", icon: CalendarCheck, roles: ["hr_manager"] },
+  { href: "/kra-goals", label: "KRA / Goals", icon: Target, roles: ["hr_manager"] },
   { href: "/calibrate-ratings", label: "Calibrate Ratings", icon: Award, roles: ["hr_manager"] },
   { href: "/analytics", label: "Analytics", icon: BarChart3, roles: ["hr_manager"] },
   { href: "/business-roles-hr", label: "Business Role", icon: Briefcase, roles: ["hr_manager"] },
