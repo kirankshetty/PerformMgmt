@@ -18,6 +18,7 @@ import PublishQuestionnaires from "@/pages/PublishQuestionnaires";
 import LevelManagement from "@/pages/LevelManagement";
 import GradeManagement from "@/pages/GradeManagement";
 import BusinessRoleManagement from "@/pages/BusinessRoleManagement";
+import FunctionalAreaManagement from "@/pages/FunctionalAreaManagement";
 import RatingManagement from "@/pages/RatingManagement";
 import AppraisalCycleManagement from "@/pages/AppraisalCycleManagement";
 import ReviewFrequencyManagement from "@/pages/ReviewFrequencyManagement";
@@ -66,6 +67,8 @@ function Router() {
           <Route path="/grades" component={GradeManagement} />
           <Route path="/business-roles" component={BusinessRoleManagement} />
           <Route path="/business-roles-hr" component={BusinessRoleManagement} />
+          <Route path="/functional-areas" component={FunctionalAreaManagement} />
+          <Route path="/functional-areas-hr" component={FunctionalAreaManagement} />
           <Route path="/ratings" component={RatingManagement} />
           <Route path="/appraisal-cycles" component={AppraisalCycleManagement} />
           <Route path="/review-frequencies" component={ReviewFrequencyManagement} />

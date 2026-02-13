@@ -13,6 +13,7 @@ import {
   levels,
   grades,
   businessRoles,
+  functionalAreas,
   ratings,
   ratingDetails,
   departments,
@@ -58,6 +59,8 @@ import {
   type InsertGrade,
   type BusinessRole,
   type InsertBusinessRole,
+  type FunctionalArea,
+  type InsertFunctionalArea,
   type Rating,
   type InsertRating,
   type RatingDetail,
@@ -211,6 +214,13 @@ export interface IStorage {
   updateGrade(id: string, grade: Partial<InsertGrade>, createdById: string): Promise<Grade>;
   deleteGrade(id: string, createdById: string): Promise<void>;
   
+  // Functional Area operations - Administrator isolated
+  getFunctionalAreas(createdById: string): Promise<FunctionalArea[]>;
+  getFunctionalArea(id: string, createdById: string): Promise<FunctionalArea | undefined>;
+  createFunctionalArea(area: InsertFunctionalArea, createdById: string): Promise<FunctionalArea>;
+  updateFunctionalArea(id: string, area: Partial<InsertFunctionalArea>, createdById: string): Promise<FunctionalArea>;
+  deleteFunctionalArea(id: string, createdById: string): Promise<void>;
+
   // Rating operations - Administrator isolated
   getRatings(createdById: string): Promise<Rating[]>;
   getRating(id: string, createdById: string): Promise<Rating | undefined>;
@@ -1576,6 +1586,69 @@ export class DatabaseStorage implements IStorage {
     
     if (result.rowCount === 0) {
       throw new Error('Business role not found or access denied');
+    }
+  }
+
+  // Functional Area operations - Administrator isolated
+  async getFunctionalAreas(createdById: string): Promise<FunctionalArea[]> {
+    return await db.select().from(functionalAreas).where(
+      eq(functionalAreas.createdById, createdById)
+    ).orderBy(asc(functionalAreas.code));
+  }
+
+  async getFunctionalArea(id: string, createdById: string): Promise<FunctionalArea | undefined> {
+    const [area] = await db.select().from(functionalAreas).where(
+      and(
+        eq(functionalAreas.id, id),
+        eq(functionalAreas.createdById, createdById)
+      )
+    );
+    return area;
+  }
+
+  async createFunctionalArea(area: InsertFunctionalArea, createdById: string): Promise<FunctionalArea> {
+    const [newArea] = await db.insert(functionalAreas).values({
+      ...area,
+      createdById,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }).returning();
+    return newArea;
+  }
+
+  async updateFunctionalArea(id: string, area: Partial<InsertFunctionalArea>, createdById: string): Promise<FunctionalArea> {
+    const [updatedArea] = await db
+      .update(functionalAreas)
+      .set({
+        ...area,
+        updatedAt: new Date()
+      })
+      .where(
+        and(
+          eq(functionalAreas.id, id),
+          eq(functionalAreas.createdById, createdById)
+        )
+      )
+      .returning();
+    
+    if (!updatedArea) {
+      throw new Error('Functional area not found or access denied');
+    }
+    return updatedArea;
+  }
+
+  async deleteFunctionalArea(id: string, createdById: string): Promise<void> {
+    const result = await db
+      .delete(functionalAreas)
+      .where(
+        and(
+          eq(functionalAreas.id, id),
+          eq(functionalAreas.createdById, createdById)
+        )
+      );
+    
+    if (result.rowCount === 0) {
+      throw new Error('Functional area not found or access denied');
     }
   }
 

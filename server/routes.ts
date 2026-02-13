@@ -16,6 +16,7 @@ import {
   insertLevelSchema,
   insertGradeSchema,
   insertBusinessRoleSchema,
+  insertFunctionalAreaSchema,
   insertRatingSchema,
   insertDepartmentSchema,
   insertAppraisalCycleSchema,
@@ -3085,6 +3086,102 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting business role:", error);
       res.status(500).json({ message: "Failed to delete business role" });
+    }
+  });
+
+  // Functional Area management routes - Administrator managed
+  app.get('/api/functional-areas', isAuthenticated, requireRoles(['admin', 'hr_manager']), async (req: any, res) => {
+    try {
+      const requestingUserId = req.user.claims.sub;
+      const requestingUser = await storage.getUser(requestingUserId);
+      
+      if (!requestingUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      let adminId = requestingUserId;
+      if (requestingUser.role === 'hr_manager' && requestingUser.companyId) {
+        const companyAdmins = await storage.getUsers({ role: 'admin', companyId: requestingUser.companyId });
+        if (companyAdmins && companyAdmins.length > 0) {
+          adminId = companyAdmins[0].id;
+        }
+      }
+      
+      const areas = await storage.getFunctionalAreas(adminId);
+      res.json(areas);
+    } catch (error) {
+      console.error("Error fetching functional areas:", error);
+      res.status(500).json({ message: "Failed to fetch functional areas" });
+    }
+  });
+
+  app.get('/api/functional-areas/:id', isAuthenticated, requireRoles(['admin', 'hr_manager']), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const createdById = req.user.claims.sub;
+      const area = await storage.getFunctionalArea(id, createdById);
+      if (!area) {
+        return res.status(404).json({ message: "Functional area not found" });
+      }
+      res.json(area);
+    } catch (error) {
+      console.error("Error fetching functional area:", error);
+      res.status(500).json({ message: "Failed to fetch functional area" });
+    }
+  });
+
+  app.post('/api/functional-areas', isAuthenticated, requireRoles(['admin']), async (req: any, res) => {
+    try {
+      const areaData = insertFunctionalAreaSchema.parse(req.body);
+      const createdById = req.user.claims.sub;
+      const area = await storage.createFunctionalArea(areaData, createdById);
+      res.status(201).json(area);
+    } catch (error) {
+      console.error("Error creating functional area:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid functional area data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to create functional area" });
+    }
+  });
+
+  app.put('/api/functional-areas/:id', isAuthenticated, requireRoles(['admin']), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const createdById = req.user.claims.sub;
+      
+      const existingArea = await storage.getFunctionalArea(id, createdById);
+      if (!existingArea) {
+        return res.status(404).json({ message: "Functional area not found" });
+      }
+      
+      const { id: _id, createdById: _createdById, createdAt: _createdAt, ...safeData } = insertFunctionalAreaSchema.partial().parse(req.body);
+      const area = await storage.updateFunctionalArea(id, safeData, createdById);
+      res.json(area);
+    } catch (error) {
+      console.error("Error updating functional area:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid functional area data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to update functional area" });
+    }
+  });
+
+  app.delete('/api/functional-areas/:id', isAuthenticated, requireRoles(['admin']), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const createdById = req.user.claims.sub;
+      
+      const existingArea = await storage.getFunctionalArea(id, createdById);
+      if (!existingArea) {
+        return res.status(404).json({ message: "Functional area not found" });
+      }
+      
+      await storage.deleteFunctionalArea(id, createdById);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting functional area:", error);
+      res.status(500).json({ message: "Failed to delete functional area" });
     }
   });
 

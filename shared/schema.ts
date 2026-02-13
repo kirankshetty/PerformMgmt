@@ -305,6 +305,20 @@ export const businessRoles = pgTable("business_roles", {
   index("business_roles_created_by_id_idx").on(table.createdById),
 ]);
 
+// Functional Areas table - Administrator managed
+export const functionalAreas = pgTable("functional_areas", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  code: varchar("code").notNull(),
+  description: text("description").notNull(),
+  status: statusEnum("status").default('active'),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  createdById: varchar("created_by_id").notNull(),
+}, (table) => [
+  unique().on(table.createdById, table.code),
+  index("functional_areas_created_by_id_idx").on(table.createdById),
+]);
+
 // Rating Type enum
 export const ratingTypeEnum = pgEnum('rating_type', ['numeric', 'text']);
 
@@ -806,6 +820,13 @@ export const insertBusinessRoleSchema = createInsertSchema(businessRoles).omit({
   createdById: true,
 });
 
+export const insertFunctionalAreaSchema = createInsertSchema(functionalAreas).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  createdById: true,
+});
+
 export const insertRatingSchema = createInsertSchema(ratings).omit({
   id: true,
   createdAt: true,
@@ -941,6 +962,8 @@ export type Grade = typeof grades.$inferSelect;
 export type InsertGrade = z.infer<typeof insertGradeSchema>;
 export type BusinessRole = typeof businessRoles.$inferSelect;
 export type InsertBusinessRole = z.infer<typeof insertBusinessRoleSchema>;
+export type FunctionalArea = typeof functionalAreas.$inferSelect;
+export type InsertFunctionalArea = z.infer<typeof insertFunctionalAreaSchema>;
 export type Rating = typeof ratings.$inferSelect;
 export type InsertRating = z.infer<typeof insertRatingSchema>;
 export type RatingDetail = typeof ratingDetails.$inferSelect;
