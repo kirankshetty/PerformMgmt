@@ -61,22 +61,27 @@ export default function ManagerKraGoalsReview() {
   const { toast } = useToast();
   const [selectedEmployee, setSelectedEmployee] = useState<string | null>(null);
   const [managerRemarks, setManagerRemarks] = useState<Record<string, { remarksActual: string; remarksPipeline: string }>>({});
+  const [rejectingReviewId, setRejectingReviewId] = useState<string | null>(null);
+  const [rejectionReason, setRejectionReason] = useState("");
 
   const { data: reviews, isLoading } = useQuery<ReviewItem[]>({
     queryKey: ["/api/manager/kra-goal-reviews"],
   });
 
   const reviewMutation = useMutation({
-    mutationFn: async ({ id, status, managerRemarksActual, managerRemarksPipeline }: { id: string; status: string; managerRemarksActual: string; managerRemarksPipeline: string }) => {
+    mutationFn: async ({ id, status, managerRemarksActual, managerRemarksPipeline, managerComments }: { id: string; status: string; managerRemarksActual: string; managerRemarksPipeline: string; managerComments?: string }) => {
       const response = await apiRequest("POST", `/api/manager/kra-goal-reviews/${id}/review`, {
         status,
         managerRemarksActual,
         managerRemarksPipeline,
+        managerComments: managerComments || null,
       });
       return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/manager/kra-goal-reviews"] });
+      setRejectingReviewId(null);
+      setRejectionReason("");
       toast({ title: "Success", description: "Review updated successfully" });
     },
     onError: (error: any) => {
@@ -115,13 +120,34 @@ export default function ManagerKraGoalsReview() {
   const approvedReviews = employeeReviews.filter(r => r.status === 'approved');
   const rejectedReviews = employeeReviews.filter(r => r.status === 'rejected');
 
-  const handleAction = (reviewId: string, status: 'approved' | 'rejected') => {
+  const handleApprove = (reviewId: string) => {
     const remarks = managerRemarks[reviewId] || { remarksActual: '', remarksPipeline: '' };
     reviewMutation.mutate({
       id: reviewId,
-      status,
+      status: 'approved',
       managerRemarksActual: remarks.remarksActual,
       managerRemarksPipeline: remarks.remarksPipeline,
+    });
+  };
+
+  const handleRejectClick = (reviewId: string) => {
+    setRejectingReviewId(reviewId);
+    setRejectionReason("");
+  };
+
+  const handleRejectConfirm = () => {
+    if (!rejectingReviewId) return;
+    if (!rejectionReason.trim()) {
+      toast({ title: "Reason required", description: "Please provide a reason for rejection", variant: "destructive" });
+      return;
+    }
+    const remarks = managerRemarks[rejectingReviewId] || { remarksActual: '', remarksPipeline: '' };
+    reviewMutation.mutate({
+      id: rejectingReviewId,
+      status: 'rejected',
+      managerRemarksActual: remarks.remarksActual,
+      managerRemarksPipeline: remarks.remarksPipeline,
+      managerComments: rejectionReason.trim(),
     });
   };
 
@@ -199,7 +225,7 @@ export default function ManagerKraGoalsReview() {
                                 size="sm"
                                 variant="outline"
                                 className="text-green-600 hover:bg-green-50"
-                                onClick={() => handleAction(review.id, 'approved')}
+                                onClick={() => handleApprove(review.id)}
                                 disabled={reviewMutation.isPending}
                               >
                                 <CheckCircle className="h-4 w-4 mr-1" />
@@ -209,7 +235,7 @@ export default function ManagerKraGoalsReview() {
                                 size="sm"
                                 variant="outline"
                                 className="text-red-600 hover:bg-red-50"
-                                onClick={() => handleAction(review.id, 'rejected')}
+                                onClick={() => handleRejectClick(review.id)}
                                 disabled={reviewMutation.isPending}
                               >
                                 <XCircle className="h-4 w-4 mr-1" />
@@ -256,7 +282,7 @@ export default function ManagerKraGoalsReview() {
                           </div>
                         </TableCell>
                       </TableRow>
-                      <TableRow className="border-b">
+                      <TableRow className={review.managerComments && !showActions ? "" : "border-b"}>
                         <TableCell colSpan={colSpan} className="pt-0 pb-3">
                           <div className="flex items-start gap-3">
                             <span className="text-sm font-medium text-muted-foreground whitespace-nowrap w-48 shrink-0 mt-2">Manager Remarks (Pipeline):</span>
@@ -273,6 +299,16 @@ export default function ManagerKraGoalsReview() {
                           </div>
                         </TableCell>
                       </TableRow>
+                      {review.managerComments && (
+                        <TableRow className="border-b">
+                          <TableCell colSpan={colSpan} className="pt-0 pb-3">
+                            <div className="flex items-start gap-3">
+                              <span className="text-sm font-medium text-red-600 whitespace-nowrap w-48 shrink-0 mt-1">Reason for Rejection:</span>
+                              <span className="text-sm text-red-600">{review.managerComments}</span>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )}
                     </Fragment>
                   );
                 })}
@@ -355,6 +391,42 @@ export default function ManagerKraGoalsReview() {
             {renderKpiTable(rejectedReviews, false)}
           </CardContent>
         </Card>
+
+        {rejectingReviewId && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md mx-4">
+              <h3 className="text-lg font-semibold flex items-center gap-2 mb-4">
+                <XCircle className="h-5 w-5 text-red-500" />
+                Reject KPI
+              </h3>
+              <p className="text-sm text-muted-foreground mb-3">Please provide a reason for rejecting this KPI:</p>
+              <Textarea
+                placeholder="Enter reason for rejection..."
+                value={rejectionReason}
+                onChange={(e) => setRejectionReason(e.target.value)}
+                className="min-h-[100px] mb-4"
+                autoFocus
+              />
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => { setRejectingReviewId(null); setRejectionReason(""); }}
+                  disabled={reviewMutation.isPending}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={handleRejectConfirm}
+                  disabled={reviewMutation.isPending || !rejectionReason.trim()}
+                >
+                  <XCircle className="h-4 w-4 mr-1" />
+                  Confirm Rejection
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
