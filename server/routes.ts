@@ -38,6 +38,9 @@ import {
 import { sendEmail, sendReviewInvitation, sendReviewReminder, sendReviewCompletion, generateRegistrationNotificationEmail, sendEmployeeSubmissionNotification } from "./emailService";
 import { ObjectStorageService, parseObjectPath, signObjectURL } from "./objectStorage";
 import { seedTestUsers, testUsers } from "./seedUsers";
+import { db } from "./db";
+import { levels as levelsTable, grades as gradesTable, businessRoles as businessRolesTable } from "@shared/schema";
+import { eq } from "drizzle-orm";
 import * as XLSX from 'xlsx';
 import PDFDocument from 'pdfkit';
 import PizZip from 'pizzip';
@@ -2796,7 +2799,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Level management routes - Administrator isolated (GET endpoints accessible by HR Manager too)
-  app.get('/api/levels', isAuthenticated, requireRoles(['admin', 'hr_manager']), async (req: any, res) => {
+  app.get('/api/levels', isAuthenticated, requireRoles(['admin', 'hr_manager', 'manager']), async (req: any, res) => {
     try {
       const requestingUserId = req.user.claims.sub;
       const requestingUser = await storage.getUser(requestingUserId);
@@ -2896,7 +2899,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Grade management routes - Administrator isolated (GET endpoints accessible by HR Manager too)
-  app.get('/api/grades', isAuthenticated, requireRoles(['admin', 'hr_manager']), async (req: any, res) => {
+  app.get('/api/grades', isAuthenticated, requireRoles(['admin', 'hr_manager', 'manager']), async (req: any, res) => {
     try {
       const requestingUserId = req.user.claims.sub;
       const requestingUser = await storage.getUser(requestingUserId);
@@ -2996,7 +2999,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Business Role management routes
-  app.get('/api/business-roles', isAuthenticated, requireRoles(['admin', 'hr_manager']), async (req: any, res) => {
+  app.get('/api/business-roles', isAuthenticated, requireRoles(['admin', 'hr_manager', 'manager']), async (req: any, res) => {
     try {
       const requestingUserId = req.user.claims.sub;
       const requestingUser = await storage.getUser(requestingUserId);
@@ -3530,7 +3533,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Department management routes - Administrator and HR Manager access for filtering
-  app.get('/api/departments', isAuthenticated, requireRoles(['admin', 'hr_manager']), async (req: any, res) => {
+  app.get('/api/departments', isAuthenticated, requireRoles(['admin', 'hr_manager', 'manager']), async (req: any, res) => {
     try {
       const createdById = req.user.claims.sub;
       const departments = await storage.getDepartments(createdById);
@@ -6926,6 +6929,454 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("Error reviewing KRA goal:", error);
       res.status(500).json({ message: "Failed to review KRA goal" });
+    }
+  });
+
+  app.get('/api/reports/filter-options', isAuthenticated, requireRoles(['manager']), async (req: any, res) => {
+    try {
+      const managerId = req.user.claims.sub;
+      const allUsers = await storage.getUsers({}, managerId);
+      const memberIds = new Set<string>();
+      const queue = allUsers.filter(u => u.reportingManagerId === managerId).map(u => u.id);
+      while (queue.length > 0) {
+        const current = queue.shift()!;
+        if (!memberIds.has(current)) {
+          memberIds.add(current);
+          const subordinates = allUsers.filter(u => u.reportingManagerId === current);
+          for (const sub of subordinates) {
+            queue.push(sub.id);
+          }
+        }
+      }
+      const allMembers = allUsers.filter(u => memberIds.has(u.id));
+
+      const locationCache = new Map<string, string>();
+      for (const m of allMembers) {
+        if (m.locationId && !locationCache.has(m.locationId)) {
+          const loc = await storage.getLocation(m.locationId);
+          if (loc) locationCache.set(m.locationId, loc.name);
+        }
+      }
+
+      const locations = Array.from(locationCache.entries()).map(([id, name]) => ({ id, name }));
+      const departments = [...new Set(allMembers.map(m => m.department).filter(Boolean))].map(d => ({ id: d!, name: d! }));
+      const levelIds = [...new Set(allMembers.map(m => m.levelId).filter(Boolean))];
+      const gradeIds = [...new Set(allMembers.map(m => m.gradeId).filter(Boolean))];
+      const brIds = [...new Set(allMembers.map(m => m.businessRoleId).filter(Boolean))];
+
+      const levels: Array<{id: string, description: string}> = [];
+      for (const lid of levelIds) {
+        const [lvl] = await db.select().from(levelsTable).where(eq(levelsTable.id, lid!));
+        if (lvl) levels.push({ id: lvl.id, description: lvl.description || lvl.code });
+      }
+
+      const grades: Array<{id: string, description: string}> = [];
+      for (const gid of gradeIds) {
+        const [gr] = await db.select().from(gradesTable).where(eq(gradesTable.id, gid!));
+        if (gr) grades.push({ id: gr.id, description: gr.description || gr.code });
+      }
+
+      const businessRoles: Array<{id: string, name: string}> = [];
+      for (const bid of brIds) {
+        const [br] = await db.select().from(businessRolesTable).where(eq(businessRolesTable.id, bid!));
+        if (br) businessRoles.push({ id: br.id, name: br.name });
+      }
+
+      const employees = allMembers.map(m => ({
+        id: m.id,
+        firstName: m.firstName || '',
+        lastName: m.lastName || '',
+        employeeCode: m.employeeCode || '',
+      }));
+
+      res.json({ locations, departments, levels, grades, businessRoles, employees });
+    } catch (error: any) {
+      console.error("Error fetching report filter options:", error);
+      res.status(500).json({ message: "Failed to fetch filter options" });
+    }
+  });
+
+  app.get('/api/reports/score-card', isAuthenticated, requireRoles(['manager']), async (req: any, res) => {
+    try {
+      const managerId = req.user.claims.sub;
+      const { fromDate, toDate, scope, location, department, level, grade, businessRole, employee } = req.query;
+
+      if (!fromDate || !toDate) {
+        return res.status(400).json({ message: "fromDate and toDate are required" });
+      }
+
+      const from = new Date(fromDate as string);
+      const to = new Date(toDate as string);
+
+      const allUsers = await storage.getUsers({});
+      let members: any[];
+
+      if (scope === 'all') {
+        const memberIds = new Set<string>();
+        const queue = allUsers.filter(u => u.reportingManagerId === managerId).map(u => u.id);
+        while (queue.length > 0) {
+          const current = queue.shift()!;
+          if (!memberIds.has(current)) {
+            memberIds.add(current);
+            const subordinates = allUsers.filter(u => u.reportingManagerId === current);
+            for (const sub of subordinates) {
+              queue.push(sub.id);
+            }
+          }
+        }
+        members = allUsers.filter(u => memberIds.has(u.id));
+      } else {
+        members = allUsers.filter(u => u.reportingManagerId === managerId);
+      }
+
+      if (location) {
+        const locationIds = (location as string).split(',');
+        members = members.filter(u => u.locationId && locationIds.includes(u.locationId));
+      }
+      if (department) {
+        const deptNames = (department as string).split(',');
+        members = members.filter(u => u.department && deptNames.includes(u.department));
+      }
+      if (level) {
+        const levelIds = (level as string).split(',');
+        members = members.filter(u => u.levelId && levelIds.includes(u.levelId));
+      }
+      if (grade) {
+        const gradeIds = (grade as string).split(',');
+        members = members.filter(u => u.gradeId && gradeIds.includes(u.gradeId));
+      }
+      if (businessRole) {
+        const brIds = (businessRole as string).split(',');
+        members = members.filter(u => u.businessRoleId && brIds.includes(u.businessRoleId));
+      }
+      if (employee) {
+        const empIds = (employee as string).split(',');
+        members = members.filter(u => empIds.includes(u.id));
+      }
+
+      const memberIds = new Set(members.map(m => m.id));
+      const allEvaluations = await storage.getEvaluations();
+      const filtered = allEvaluations.filter(e =>
+        memberIds.has(e.employeeId) &&
+        e.createdAt && new Date(e.createdAt) >= from &&
+        e.createdAt && new Date(e.createdAt) <= to
+      );
+
+      const reviewCycles = await storage.getReviewCycles();
+      const rcMap = new Map(reviewCycles.map(rc => [rc.id, rc]));
+
+      const locationCache = new Map<string, string>();
+      const result = [];
+      for (const evaluation of filtered) {
+        const emp = members.find(m => m.id === evaluation.employeeId);
+        let locationName = '';
+        if (emp?.locationId) {
+          if (!locationCache.has(emp.locationId)) {
+            const loc = await storage.getLocation(emp.locationId);
+            locationCache.set(emp.locationId, loc?.name || '');
+          }
+          locationName = locationCache.get(emp.locationId) || '';
+        }
+        const rc = rcMap.get(evaluation.reviewCycleId);
+        result.push({
+          employeeId: emp?.id,
+          employeeName: emp ? `${emp.firstName || ''} ${emp.lastName || ''}`.trim() : '',
+          employeeCode: emp?.code || '',
+          employeeEmail: emp?.email || '',
+          department: emp?.department || '',
+          location: locationName,
+          reviewCycleName: rc?.name || rc?.description || '',
+          selfEvaluationSubmittedAt: evaluation.selfEvaluationSubmittedAt,
+          managerEvaluationSubmittedAt: evaluation.managerEvaluationSubmittedAt,
+          overallRating: evaluation.overallRating,
+          calibratedRating: evaluation.calibratedRating,
+          status: evaluation.status,
+          meetingCompletedAt: evaluation.meetingCompletedAt,
+          finalizedAt: evaluation.finalizedAt,
+        });
+      }
+
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error generating score card report:", error);
+      res.status(500).json({ message: "Failed to generate report" });
+    }
+  });
+
+  app.get('/api/reports/activity', isAuthenticated, requireRoles(['manager']), async (req: any, res) => {
+    try {
+      const managerId = req.user.claims.sub;
+      const { fromDate, toDate, scope, location, department, level, grade, businessRole, employee } = req.query;
+
+      if (!fromDate || !toDate) {
+        return res.status(400).json({ message: "fromDate and toDate are required" });
+      }
+
+      const from = new Date(fromDate as string);
+      const to = new Date(toDate as string);
+
+      const allUsers = await storage.getUsers({});
+      let members: any[];
+
+      if (scope === 'all') {
+        const memberIds = new Set<string>();
+        const queue = allUsers.filter(u => u.reportingManagerId === managerId).map(u => u.id);
+        while (queue.length > 0) {
+          const current = queue.shift()!;
+          if (!memberIds.has(current)) {
+            memberIds.add(current);
+            const subordinates = allUsers.filter(u => u.reportingManagerId === current);
+            for (const sub of subordinates) {
+              queue.push(sub.id);
+            }
+          }
+        }
+        members = allUsers.filter(u => memberIds.has(u.id));
+      } else {
+        members = allUsers.filter(u => u.reportingManagerId === managerId);
+      }
+
+      if (location) {
+        const locationIds = (location as string).split(',');
+        members = members.filter(u => u.locationId && locationIds.includes(u.locationId));
+      }
+      if (department) {
+        const deptNames = (department as string).split(',');
+        members = members.filter(u => u.department && deptNames.includes(u.department));
+      }
+      if (level) {
+        const levelIds = (level as string).split(',');
+        members = members.filter(u => u.levelId && levelIds.includes(u.levelId));
+      }
+      if (grade) {
+        const gradeIds = (grade as string).split(',');
+        members = members.filter(u => u.gradeId && gradeIds.includes(u.gradeId));
+      }
+      if (businessRole) {
+        const brIds = (businessRole as string).split(',');
+        members = members.filter(u => u.businessRoleId && brIds.includes(u.businessRoleId));
+      }
+      if (employee) {
+        const empIds = (employee as string).split(',');
+        members = members.filter(u => empIds.includes(u.id));
+      }
+
+      const memberIds = new Set(members.map(m => m.id));
+      const allEvaluations = await storage.getEvaluations();
+      const filteredEvaluations = allEvaluations.filter(e =>
+        memberIds.has(e.employeeId) &&
+        e.createdAt && new Date(e.createdAt) >= from &&
+        e.createdAt && new Date(e.createdAt) <= to
+      );
+
+      const locationCache = new Map<string, string>();
+      const activities: any[] = [];
+
+      const isInRange = (d: any) => {
+        if (!d) return false;
+        const dt = new Date(d);
+        return dt >= from && dt <= to;
+      };
+
+      for (const emp of members) {
+        let locationName = '';
+        if (emp.locationId) {
+          if (!locationCache.has(emp.locationId)) {
+            const loc = await storage.getLocation(emp.locationId);
+            locationCache.set(emp.locationId, loc?.name || '');
+          }
+          locationName = locationCache.get(emp.locationId) || '';
+        }
+
+        const empInfo = {
+          employeeId: emp.id,
+          employeeName: `${emp.firstName || ''} ${emp.lastName || ''}`.trim(),
+          employeeCode: emp.code || '',
+          department: emp.department || '',
+          location: locationName,
+        };
+
+        const empEvals = filteredEvaluations.filter(e => e.employeeId === emp.id);
+        for (const ev of empEvals) {
+          if (isInRange(ev.selfEvaluationSubmittedAt)) {
+            activities.push({ ...empInfo, activityType: 'self_evaluation_submitted', activityDate: new Date(ev.selfEvaluationSubmittedAt!).toISOString(), details: 'Self evaluation submitted' });
+          }
+          if (isInRange(ev.managerEvaluationSubmittedAt)) {
+            activities.push({ ...empInfo, activityType: 'manager_evaluation_submitted', activityDate: new Date(ev.managerEvaluationSubmittedAt!).toISOString(), details: 'Manager evaluation submitted' });
+          }
+          if (isInRange(ev.meetingScheduledAt)) {
+            activities.push({ ...empInfo, activityType: 'meeting_scheduled', activityDate: new Date(ev.meetingScheduledAt!).toISOString(), details: 'Meeting scheduled' });
+          }
+          if (isInRange(ev.meetingCompletedAt)) {
+            activities.push({ ...empInfo, activityType: 'meeting_completed', activityDate: new Date(ev.meetingCompletedAt!).toISOString(), details: 'Meeting completed' });
+          }
+          if (isInRange(ev.finalizedAt)) {
+            activities.push({ ...empInfo, activityType: 'evaluation_finalized', activityDate: new Date(ev.finalizedAt!).toISOString(), details: 'Evaluation finalized' });
+          }
+        }
+
+        const kraReviews = await storage.getKraGoalReviewsByEmployee(emp.id);
+        for (const review of kraReviews) {
+          if (isInRange(review.submittedAt)) {
+            activities.push({ ...empInfo, activityType: 'kra_self_review_submitted', activityDate: new Date(review.submittedAt!).toISOString(), details: 'KRA self review submitted' });
+          }
+          if (isInRange(review.reviewedAt) && review.status === 'approved') {
+            activities.push({ ...empInfo, activityType: 'kra_review_approved', activityDate: new Date(review.reviewedAt!).toISOString(), details: 'KRA review approved' });
+          }
+          if (isInRange(review.reviewedAt) && review.status === 'rejected') {
+            activities.push({ ...empInfo, activityType: 'kra_review_rejected', activityDate: new Date(review.reviewedAt!).toISOString(), details: 'KRA review rejected' });
+          }
+        }
+      }
+
+      activities.sort((a, b) => new Date(b.activityDate).getTime() - new Date(a.activityDate).getTime());
+
+      res.json(activities);
+    } catch (error: any) {
+      console.error("Error generating activity report:", error);
+      res.status(500).json({ message: "Failed to generate report" });
+    }
+  });
+
+  app.get('/api/reports/trend', isAuthenticated, requireRoles(['manager']), async (req: any, res) => {
+    try {
+      const managerId = req.user.claims.sub;
+      const { fromDate, toDate, scope, location, department, level, grade, businessRole, employee } = req.query;
+
+      if (!fromDate || !toDate) {
+        return res.status(400).json({ message: "fromDate and toDate are required" });
+      }
+
+      const from = new Date(fromDate as string);
+      const to = new Date(toDate as string);
+
+      const allUsers = await storage.getUsers({});
+      let members: any[];
+
+      if (scope === 'all') {
+        const memberIds = new Set<string>();
+        const queue = allUsers.filter(u => u.reportingManagerId === managerId).map(u => u.id);
+        while (queue.length > 0) {
+          const current = queue.shift()!;
+          if (!memberIds.has(current)) {
+            memberIds.add(current);
+            const subordinates = allUsers.filter(u => u.reportingManagerId === current);
+            for (const sub of subordinates) {
+              queue.push(sub.id);
+            }
+          }
+        }
+        members = allUsers.filter(u => memberIds.has(u.id));
+      } else {
+        members = allUsers.filter(u => u.reportingManagerId === managerId);
+      }
+
+      if (location) {
+        const locationIds = (location as string).split(',');
+        members = members.filter(u => u.locationId && locationIds.includes(u.locationId));
+      }
+      if (department) {
+        const deptNames = (department as string).split(',');
+        members = members.filter(u => u.department && deptNames.includes(u.department));
+      }
+      if (level) {
+        const levelIds = (level as string).split(',');
+        members = members.filter(u => u.levelId && levelIds.includes(u.levelId));
+      }
+      if (grade) {
+        const gradeIds = (grade as string).split(',');
+        members = members.filter(u => u.gradeId && gradeIds.includes(u.gradeId));
+      }
+      if (businessRole) {
+        const brIds = (businessRole as string).split(',');
+        members = members.filter(u => u.businessRoleId && brIds.includes(u.businessRoleId));
+      }
+      if (employee) {
+        const empIds = (employee as string).split(',');
+        members = members.filter(u => empIds.includes(u.id));
+      }
+
+      const memberIds = new Set(members.map(m => m.id));
+      const allEvaluations = await storage.getEvaluations();
+      const filtered = allEvaluations.filter(e =>
+        memberIds.has(e.employeeId) &&
+        e.createdAt && new Date(e.createdAt) >= from &&
+        e.createdAt && new Date(e.createdAt) <= to
+      );
+
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const monthMap = new Map<string, any[]>();
+
+      for (const ev of filtered) {
+        const d = new Date(ev.createdAt!);
+        const key = `${monthNames[d.getMonth()]} ${d.getFullYear()}`;
+        if (!monthMap.has(key)) {
+          monthMap.set(key, []);
+        }
+        monthMap.get(key)!.push(ev);
+      }
+
+      const memberMap = new Map(members.map(m => [m.id, m]));
+
+      const periods = Array.from(monthMap.entries())
+        .sort((a, b) => {
+          const evA = a[1][0];
+          const evB = b[1][0];
+          return new Date(evA.createdAt!).getTime() - new Date(evB.createdAt!).getTime();
+        })
+        .map(([period, evals]) => {
+          const overallRatings = evals.filter(e => e.overallRating != null).map(e => e.overallRating as number);
+          const calibratedRatings = evals.filter(e => e.calibratedRating != null).map(e => e.calibratedRating as number);
+          const d = new Date(evals[0].createdAt!);
+          const periodStart = new Date(d.getFullYear(), d.getMonth(), 1).toISOString();
+
+          return {
+            period,
+            periodStart,
+            averageOverallRating: overallRatings.length > 0 ? Number((overallRatings.reduce((a, b) => a + b, 0) / overallRatings.length).toFixed(2)) : 0,
+            averageCalibratedRating: calibratedRatings.length > 0 ? Number((calibratedRatings.reduce((a, b) => a + b, 0) / calibratedRatings.length).toFixed(2)) : 0,
+            totalEvaluations: evals.length,
+            completedEvaluations: evals.filter(e => e.status === 'completed').length,
+            employeeScores: evals.map(e => {
+              const emp = memberMap.get(e.employeeId);
+              return {
+                employeeId: e.employeeId,
+                employeeName: emp ? `${emp.firstName || ''} ${emp.lastName || ''}`.trim() : '',
+                employeeCode: emp?.code || '',
+                overallRating: e.overallRating,
+                calibratedRating: e.calibratedRating,
+              };
+            }),
+          };
+        });
+
+      const employeeTrendMap = new Map<string, any>();
+      for (const [period, evals] of monthMap.entries()) {
+        for (const ev of evals) {
+          if (!employeeTrendMap.has(ev.employeeId)) {
+            const emp = memberMap.get(ev.employeeId);
+            employeeTrendMap.set(ev.employeeId, {
+              employeeId: ev.employeeId,
+              employeeName: emp ? `${emp.firstName || ''} ${emp.lastName || ''}`.trim() : '',
+              employeeCode: emp?.code || '',
+              ratings: [],
+            });
+          }
+          employeeTrendMap.get(ev.employeeId)!.ratings.push({
+            period,
+            overallRating: ev.overallRating,
+            calibratedRating: ev.calibratedRating,
+          });
+        }
+      }
+
+      res.json({
+        periods,
+        employees: Array.from(employeeTrendMap.values()),
+      });
+    } catch (error: any) {
+      console.error("Error generating trend report:", error);
+      res.status(500).json({ message: "Failed to generate report" });
     }
   });
 

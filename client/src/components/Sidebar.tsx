@@ -29,6 +29,9 @@ import {
   BarChart3,
   Briefcase,
   Star,
+  FileBarChart,
+  Activity,
+  TrendingUp,
 } from "lucide-react";
 import type { Company } from "@shared/schema";
 
@@ -72,6 +75,9 @@ const navItems: NavItem[] = [
   { href: "/development-goals", label: "My Development Goals", icon: Target, roles: ["employee"] },
   { href: "/kra-goals-self-review", label: "KRAs/Goals Self Review", icon: ClipboardList, roles: ["employee"] },
   { href: "/feedback-requests", label: "Feedback Requests", icon: MessageSquare, roles: ["employee"] },
+  { href: "/report-score-card", label: "Score Card", icon: FileBarChart, roles: ["manager"] },
+  { href: "/report-activity", label: "Activity Report", icon: Activity, roles: ["manager"] },
+  { href: "/report-trend", label: "Trend Report", icon: TrendingUp, roles: ["manager"] },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

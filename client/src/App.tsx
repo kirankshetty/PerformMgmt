@@ -44,6 +44,9 @@ import SetTargetsKraGoals from "@/pages/SetTargetsKraGoals";
 import KraGoalsSelfReview from "@/pages/KraGoalsSelfReview";
 import ManagerKraGoalsReview from "@/pages/ManagerKraGoalsReview";
 import Settings from "@/pages/Settings";
+import ReportScoreCard from "@/pages/ReportScoreCard";
+import ReportActivity from "@/pages/ReportActivity";
+import ReportTrend from "@/pages/ReportTrend";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -98,6 +101,9 @@ function Router() {
           <Route path="/calibrate-ratings" component={CalibrateRatings} />
           <Route path="/analytics" component={Analytics} />
           <Route path="/settings" component={Settings} />
+          <Route path="/report-score-card" component={ReportScoreCard} />
+          <Route path="/report-activity" component={ReportActivity} />
+          <Route path="/report-trend" component={ReportTrend} />
         </>
       )}
       <Route component={NotFound} />
