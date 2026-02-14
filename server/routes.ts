@@ -6283,7 +6283,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const reviewFreqList = await storage.getReviewFrequencies(kraOwnerId);
       const reviewFreqMap: Record<string, string> = {};
       for (const rf of reviewFreqList) {
-        reviewFreqMap[rf.id] = rf.name;
+        reviewFreqMap[rf.id] = rf.code;
       }
       const krasWithKpis = [];
       for (const kra of kraList) {
