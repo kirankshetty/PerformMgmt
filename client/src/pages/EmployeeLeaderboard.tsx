@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Loader2, Trophy, Medal, Award, Send, Bot, User, Sparkles } from "lucide-react";
+import { Loader2, Trophy, Medal, Award, Send, Bot, User, Sparkles, ChevronDown, ChevronUp, Filter } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -152,16 +152,15 @@ function EmployeeCard({ entry, isMe }: { entry: LeaderboardEntry; isMe: boolean 
 export default function EmployeeLeaderboard() {
   const [fromDate, setFromDate] = useState(() => {
     const d = new Date();
-    d.setMonth(d.getMonth() - 3);
     d.setDate(1);
     return d.toISOString().split('T')[0];
   });
   const [toDate, setToDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
 
   const [appliedParams, setAppliedParams] = useState<string>(() => {
     const params = new URLSearchParams();
     const d = new Date();
-    d.setMonth(d.getMonth() - 3);
     d.setDate(1);
     params.set('fromDate', d.toISOString().split('T')[0]);
     params.set('toDate', new Date().toISOString().split('T')[0]);
@@ -293,19 +292,35 @@ export default function EmployeeLeaderboard() {
         </div>
 
         <Card>
-          <CardContent className="pt-6">
-            <div className="flex flex-wrap items-end gap-4">
-              <div>
-                <Label>From Date</Label>
-                <Input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} className="w-44" />
-              </div>
-              <div>
-                <Label>To Date</Label>
-                <Input type="date" value={toDate} onChange={e => setToDate(e.target.value)} className="w-44" />
-              </div>
-              <Button onClick={handleApplyFilters}>Apply</Button>
+          <button
+            type="button"
+            className="w-full flex items-center justify-between px-6 py-3 text-left"
+            onClick={() => setFiltersExpanded(!filtersExpanded)}
+          >
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <Filter className="h-4 w-4" />
+              <span>Date Filter</span>
+              <Badge variant="secondary" className="ml-1 text-xs font-normal">
+                {new Date(fromDate).toLocaleDateString()} – {new Date(toDate).toLocaleDateString()}
+              </Badge>
             </div>
-          </CardContent>
+            {filtersExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+          </button>
+          {filtersExpanded && (
+            <CardContent className="pt-0 pb-4">
+              <div className="flex flex-wrap items-end gap-4">
+                <div>
+                  <Label>From Date</Label>
+                  <Input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} className="w-44" />
+                </div>
+                <div>
+                  <Label>To Date</Label>
+                  <Input type="date" value={toDate} onChange={e => setToDate(e.target.value)} className="w-44" />
+                </div>
+                <Button onClick={handleApplyFilters}>Apply</Button>
+              </div>
+            </CardContent>
+          )}
         </Card>
 
         {data && myEntry && (
