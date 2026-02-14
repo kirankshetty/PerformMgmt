@@ -6402,6 +6402,144 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Employee KRA/Goals Self Review Routes
   // ==========================================
 
+  function generateReviewPeriods(
+    frequencyCode: string,
+    cycleStartDate: Date,
+    cycleEndDate: Date,
+    targetSetDate: Date
+  ): { periodKey: string; displayName: string; startDate: Date; endDate: Date }[] {
+    const periods: { periodKey: string; displayName: string; startDate: Date; endDate: Date }[] = [];
+    const freq = frequencyCode.toLowerCase().trim();
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+    if (freq === 'daily') {
+      let current = new Date(Math.max(targetSetDate.getTime(), cycleStartDate.getTime()));
+      current.setHours(0, 0, 0, 0);
+      while (current <= cycleEndDate) {
+        const end = new Date(current);
+        end.setHours(23, 59, 59, 999);
+        const key = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}-${String(current.getDate()).padStart(2, '0')}`;
+        periods.push({
+          periodKey: key,
+          displayName: `${monthNames[current.getMonth()]} ${current.getDate()}, ${current.getFullYear()}`,
+          startDate: new Date(current),
+          endDate: end,
+        });
+        current.setDate(current.getDate() + 1);
+      }
+    } else if (freq === 'weekly' || freq === 'weekly reviews') {
+      let current = new Date(Math.max(targetSetDate.getTime(), cycleStartDate.getTime()));
+      current.setHours(0, 0, 0, 0);
+      const day = current.getDay();
+      const mondayOffset = day === 0 ? -6 : 1 - day;
+      current.setDate(current.getDate() + mondayOffset);
+      let weekCounter = 1;
+      while (current <= cycleEndDate) {
+        const weekStart = new Date(current);
+        const weekEnd = new Date(current);
+        weekEnd.setDate(weekEnd.getDate() + 6);
+        weekEnd.setHours(23, 59, 59, 999);
+        const effectiveEnd = weekEnd > cycleEndDate ? cycleEndDate : weekEnd;
+        if (weekStart >= targetSetDate || (weekStart <= targetSetDate && effectiveEnd >= targetSetDate)) {
+          const wsKey = `${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, '0')}-${String(weekStart.getDate()).padStart(2, '0')}`;
+          periods.push({
+            periodKey: `W-${wsKey}`,
+            displayName: `Week ${weekCounter} (${monthNames[weekStart.getMonth()]} ${weekStart.getDate()} - ${monthNames[effectiveEnd.getMonth()]} ${effectiveEnd.getDate()}, ${effectiveEnd.getFullYear()})`,
+            startDate: weekStart,
+            endDate: effectiveEnd,
+          });
+        }
+        weekCounter++;
+        current.setDate(current.getDate() + 7);
+      }
+    } else if (freq === 'monthly' || freq === 'monthly frequency') {
+      let effectiveStart = new Date(Math.max(targetSetDate.getTime(), cycleStartDate.getTime()));
+      let currentMonth = effectiveStart.getMonth();
+      let currentYear = effectiveStart.getFullYear();
+      while (true) {
+        const monthStart = new Date(currentYear, currentMonth, 1);
+        const monthEnd = new Date(currentYear, currentMonth + 1, 0, 23, 59, 59, 999);
+        if (monthStart > cycleEndDate) break;
+        const effectiveEnd = monthEnd > cycleEndDate ? cycleEndDate : monthEnd;
+        if (effectiveEnd >= targetSetDate) {
+          periods.push({
+            periodKey: `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`,
+            displayName: `${monthNames[currentMonth]} ${currentYear}`,
+            startDate: monthStart,
+            endDate: effectiveEnd,
+          });
+        }
+        currentMonth++;
+        if (currentMonth > 11) {
+          currentMonth = 0;
+          currentYear++;
+        }
+      }
+    } else if (freq === 'quarterly' || freq === 'quarterly frequency') {
+      let effectiveStart = new Date(Math.max(targetSetDate.getTime(), cycleStartDate.getTime()));
+      let startMonth = cycleStartDate.getMonth();
+      let startYear = cycleStartDate.getFullYear();
+      let qNum = 1;
+      while (true) {
+        const qStart = new Date(startYear, startMonth, 1);
+        const qEnd = new Date(startYear, startMonth + 3, 0, 23, 59, 59, 999);
+        if (qStart > cycleEndDate) break;
+        const effectiveEnd = qEnd > cycleEndDate ? cycleEndDate : qEnd;
+        if (effectiveEnd >= effectiveStart) {
+          periods.push({
+            periodKey: `${startYear}-Q${qNum}`,
+            displayName: `Q${qNum} (${monthNames[qStart.getMonth()]} - ${monthNames[effectiveEnd.getMonth()]} ${effectiveEnd.getFullYear()})`,
+            startDate: qStart,
+            endDate: effectiveEnd,
+          });
+        }
+        qNum++;
+        startMonth += 3;
+        if (startMonth > 11) {
+          startMonth -= 12;
+          startYear++;
+        }
+      }
+    } else if (freq === 'half yearly' || freq === 'half yearly frequency') {
+      let startMonth = cycleStartDate.getMonth();
+      let startYear = cycleStartDate.getFullYear();
+      let hNum = 1;
+      let effectiveStart = new Date(Math.max(targetSetDate.getTime(), cycleStartDate.getTime()));
+      while (true) {
+        const hStart = new Date(startYear, startMonth, 1);
+        const hEnd = new Date(startYear, startMonth + 6, 0, 23, 59, 59, 999);
+        if (hStart > cycleEndDate) break;
+        const effectiveEnd = hEnd > cycleEndDate ? cycleEndDate : hEnd;
+        if (effectiveEnd >= effectiveStart) {
+          periods.push({
+            periodKey: `${startYear}-H${hNum}`,
+            displayName: `H${hNum} (${monthNames[hStart.getMonth()]} - ${monthNames[effectiveEnd.getMonth()]} ${effectiveEnd.getFullYear()})`,
+            startDate: hStart,
+            endDate: effectiveEnd,
+          });
+        }
+        hNum++;
+        startMonth += 6;
+        if (startMonth > 11) {
+          startMonth -= 12;
+          startYear++;
+        }
+      }
+    } else if (freq === 'annual' || freq === 'annual frequency') {
+      const effectiveStart = new Date(Math.max(targetSetDate.getTime(), cycleStartDate.getTime()));
+      if (effectiveStart <= cycleEndDate) {
+        periods.push({
+          periodKey: `${cycleStartDate.getFullYear()}-${cycleEndDate.getFullYear()}`,
+          displayName: `FY ${cycleStartDate.getFullYear()}-${String(cycleEndDate.getFullYear()).slice(2)}`,
+          startDate: cycleStartDate,
+          endDate: cycleEndDate,
+        });
+      }
+    }
+
+    return periods;
+  }
+
   app.get('/api/employee/kra-goal-reviews', isAuthenticated, requireRoles(['employee']), async (req: any, res) => {
     try {
       const employeeId = req.user.claims.sub;
@@ -6420,12 +6558,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const kraIds = [...new Set(targets.map(t => t.kraId))];
       const kraMap: Record<string, any> = {};
       const kpiMap: Record<string, any> = {};
-      const reviewFreqMap: Record<string, string> = {};
+      const reviewFreqMap: Record<string, any> = {};
 
       for (const admin of companyAdmins) {
         const reviewFreqList = await storage.getReviewFrequencies(admin.id);
         for (const rf of reviewFreqList) {
-          reviewFreqMap[rf.id] = rf.code;
+          reviewFreqMap[rf.id] = rf;
         }
       }
 
@@ -6440,27 +6578,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      const allCalendars: any[] = [];
+      let appraisalCycle: any = null;
       for (const admin of companyAdmins) {
-        const cals = await storage.getFrequencyCalendars(admin.id);
-        for (const c of cals) {
-          if (!allCalendars.find((ac: any) => ac.id === c.id)) {
-            allCalendars.push(c);
+        const cycles = await storage.getAppraisalCycles(admin.id);
+        const now = new Date();
+        for (const c of cycles) {
+          const from = new Date(c.fromDate);
+          const to = new Date(c.toDate);
+          if (from <= now && to >= now) {
+            appraisalCycle = c;
+            break;
           }
         }
+        if (appraisalCycle) break;
       }
-      const allDetails: any[] = [];
-      for (const cal of allCalendars) {
-        const details = await storage.getFrequencyCalendarDetailsByCalendarId(cal.id);
-        for (const d of details) {
-          allDetails.push({ ...d, calendarCode: cal.code, reviewFrequencyId: cal.reviewFrequencyId });
-        }
+
+      if (!appraisalCycle) {
+        return res.json({ goals: [], counts: { pending: 0, new: 0, toBeSubmitted: 0, pendingApproval: 0, approved: 0 } });
       }
+
+      const cycleStart = new Date(appraisalCycle.fromDate);
+      const cycleEnd = new Date(appraisalCycle.toDate);
 
       const existingReviews = await storage.getKraGoalReviewsByEmployee(employeeId);
       const reviewMap: Record<string, any> = {};
       for (const r of existingReviews) {
-        reviewMap[`${r.kpiId}_${r.frequencyCalendarDetailId}`] = r;
+        reviewMap[`${r.kpiId}_${r.periodKey}`] = r;
       }
 
       const now = new Date();
@@ -6470,17 +6613,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const kra = kraMap[target.kraId];
         if (!kra) continue;
 
-        const relevantDetails = allDetails;
+        const reviewFreq = kra.reviewFrequencyId ? reviewFreqMap[kra.reviewFrequencyId] : null;
+        const freqCode = reviewFreq?.code || 'Monthly';
 
-        for (const detail of relevantDetails) {
-          const endDate = new Date(detail.endDate);
-          const startDate = new Date(detail.startDate);
+        const targetSetDate = new Date(target.createdAt);
+        const periods = generateReviewPeriods(freqCode, cycleStart, cycleEnd, targetSetDate);
+
+        for (const period of periods) {
           const kpi = kpiMap[target.kpiId];
-          const existingReview = reviewMap[`${target.kpiId}_${detail.id}`];
+          const existingReview = reviewMap[`${target.kpiId}_${period.periodKey}`];
+
+          const periodEnd = new Date(period.endDate);
+          const periodStart = new Date(period.startDate);
+          const isOverdue = periodEnd < now;
+          const isCurrent = periodStart <= now && periodEnd >= now;
+
+          if (!isOverdue && !isCurrent) continue;
 
           const reviewStatus = existingReview?.status || 'not_started';
-          const isOverdue = endDate < now;
-          const isCurrent = startDate <= now && endDate >= now;
 
           let category = '';
           if (reviewStatus === 'approved') {
@@ -6511,13 +6661,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
             kpiCode: kpi?.code || '',
             kpiName: kpi?.name || '',
             kpiInputType: kpi?.inputType || 'number',
-            reviewFrequency: kra.reviewFrequencyId ? (reviewFreqMap[kra.reviewFrequencyId] || '') : '',
+            reviewFrequency: freqCode,
             targetValue: target.targetValue,
             thresholdValue: target.thresholdValue,
-            calendarDetailId: detail.id,
-            periodName: detail.displayName,
-            periodStart: detail.startDate,
-            periodEnd: detail.endDate,
+            periodKey: period.periodKey,
+            periodName: period.displayName,
+            periodStart: period.startDate.toISOString(),
+            periodEnd: period.endDate.toISOString(),
             selfRating: existingReview?.selfRating || '',
             selfComments: existingReview?.selfComments || '',
             status: reviewStatus,
@@ -6525,7 +6675,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
             submittedAt: existingReview?.submittedAt || null,
             reviewedAt: existingReview?.reviewedAt || null,
             managerComments: existingReview?.managerComments || null,
-            frequencyCalendarDetailId: detail.id,
           });
         }
       }
@@ -6556,7 +6705,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const results = [];
       for (const review of reviews) {
-        if (!review.kpiTargetId || !review.kpiId || !review.kraId || !review.frequencyCalendarDetailId) {
+        if (!review.kpiTargetId || !review.kpiId || !review.kraId || !review.periodKey) {
           continue;
         }
         const saved = await storage.upsertKraGoalReview({
@@ -6564,7 +6713,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           kpiTargetId: review.kpiTargetId,
           kpiId: review.kpiId,
           kraId: review.kraId,
-          frequencyCalendarDetailId: review.frequencyCalendarDetailId,
+          periodKey: review.periodKey,
+          periodStartDate: new Date(review.periodStart),
+          periodEndDate: new Date(review.periodEnd),
           selfRating: review.selfRating || null,
           selfComments: review.selfComments || null,
           status: 'draft',
@@ -6590,7 +6741,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const results = [];
       for (const review of reviews) {
-        if (!review.kpiTargetId || !review.kpiId || !review.kraId || !review.frequencyCalendarDetailId) {
+        if (!review.kpiTargetId || !review.kpiId || !review.kraId || !review.periodKey) {
           continue;
         }
         const saved = await storage.upsertKraGoalReview({
@@ -6598,7 +6749,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           kpiTargetId: review.kpiTargetId,
           kpiId: review.kpiId,
           kraId: review.kraId,
-          frequencyCalendarDetailId: review.frequencyCalendarDetailId,
+          periodKey: review.periodKey,
+          periodStartDate: new Date(review.periodStart),
+          periodEndDate: new Date(review.periodEnd),
           selfRating: review.selfRating || null,
           selfComments: review.selfComments || null,
           status: 'submitted',

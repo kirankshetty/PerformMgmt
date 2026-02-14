@@ -1379,7 +1379,9 @@ export const kraGoalReviews = pgTable("kra_goal_reviews", {
   kpiTargetId: varchar("kpi_target_id").notNull(),
   kpiId: varchar("kpi_id").notNull(),
   kraId: varchar("kra_id").notNull(),
-  frequencyCalendarDetailId: varchar("frequency_calendar_detail_id").notNull(),
+  periodKey: varchar("period_key").notNull(),
+  periodStartDate: timestamp("period_start_date").notNull(),
+  periodEndDate: timestamp("period_end_date").notNull(),
   selfRating: varchar("self_rating"),
   selfComments: text("self_comments"),
   status: kraGoalReviewStatusEnum("status").default('draft').notNull(),
@@ -1393,7 +1395,7 @@ export const kraGoalReviews = pgTable("kra_goal_reviews", {
   index("kra_goal_reviews_employee_id_idx").on(table.employeeId),
   index("kra_goal_reviews_kpi_target_id_idx").on(table.kpiTargetId),
   index("kra_goal_reviews_status_idx").on(table.status),
-  unique().on(table.employeeId, table.kpiId, table.frequencyCalendarDetailId),
+  unique().on(table.employeeId, table.kpiId, table.periodKey),
 ]);
 
 export const kraGoalReviewsRelations = relations(kraGoalReviews, ({ one }) => ({
@@ -1412,10 +1414,6 @@ export const kraGoalReviewsRelations = relations(kraGoalReviews, ({ one }) => ({
   kra: one(kras, {
     fields: [kraGoalReviews.kraId],
     references: [kras.id],
-  }),
-  calendarDetail: one(frequencyCalendarDetails, {
-    fields: [kraGoalReviews.frequencyCalendarDetailId],
-    references: [frequencyCalendarDetails.id],
   }),
   reviewedByManager: one(users, {
     fields: [kraGoalReviews.reviewedByManagerId],

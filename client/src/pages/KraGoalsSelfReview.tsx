@@ -32,7 +32,7 @@ interface GoalItem {
   reviewFrequency: string;
   targetValue: string;
   thresholdValue: string | null;
-  calendarDetailId: string;
+  periodKey: string;
   periodName: string;
   periodStart: string;
   periodEnd: string;
@@ -43,7 +43,6 @@ interface GoalItem {
   submittedAt: string | null;
   reviewedAt: string | null;
   managerComments: string | null;
-  frequencyCalendarDetailId: string;
 }
 
 interface GoalsData {
@@ -99,16 +98,25 @@ export default function KraGoalsSelfReview() {
 
   const filteredGoals = data?.goals.filter(g => g.category === activeCategory) || [];
 
-  const groupedByKra = filteredGoals.reduce<Record<string, { kraCode: string; kraName: string; goals: GoalItem[] }>>((acc, goal) => {
-    const key = `${goal.kraId}_${goal.calendarDetailId}`;
+  const groupedByKraPeriod = filteredGoals.reduce<Record<string, { kraCode: string; kraName: string; periodKey: string; periodName: string; periodStart: string; periodEnd: string; reviewFrequency: string; goals: GoalItem[] }>>((acc, goal) => {
+    const key = `${goal.kraId}_${goal.periodKey}`;
     if (!acc[key]) {
-      acc[key] = { kraCode: goal.kraCode, kraName: goal.kraName, goals: [] };
+      acc[key] = {
+        kraCode: goal.kraCode,
+        kraName: goal.kraName,
+        periodKey: goal.periodKey,
+        periodName: goal.periodName,
+        periodStart: goal.periodStart,
+        periodEnd: goal.periodEnd,
+        reviewFrequency: goal.reviewFrequency,
+        goals: [],
+      };
     }
     acc[key].goals.push(goal);
     return acc;
   }, {});
 
-  const getEditKey = (goal: GoalItem) => `${goal.kpiId}_${goal.frequencyCalendarDetailId}`;
+  const getEditKey = (goal: GoalItem) => `${goal.kpiId}_${goal.periodKey}`;
 
   const handleSave = () => {
     const reviewsToSave = filteredGoals
@@ -122,7 +130,9 @@ export default function KraGoalsSelfReview() {
           kpiTargetId: g.kpiTargetId,
           kpiId: g.kpiId,
           kraId: g.kraId,
-          frequencyCalendarDetailId: g.frequencyCalendarDetailId,
+          periodKey: g.periodKey,
+          periodStart: g.periodStart,
+          periodEnd: g.periodEnd,
           selfRating: editValues[key]?.selfRating || g.selfRating || '',
           selfComments: editValues[key]?.selfComments || g.selfComments || '',
         };
@@ -142,7 +152,9 @@ export default function KraGoalsSelfReview() {
         kpiTargetId: g.kpiTargetId,
         kpiId: g.kpiId,
         kraId: g.kraId,
-        frequencyCalendarDetailId: g.frequencyCalendarDetailId,
+        periodKey: g.periodKey,
+        periodStart: g.periodStart,
+        periodEnd: g.periodEnd,
         selfRating: editValues[key]?.selfRating || g.selfRating || '',
         selfComments: editValues[key]?.selfComments || g.selfComments || '',
       };
@@ -257,99 +269,94 @@ export default function KraGoalsSelfReview() {
             </div>
           ) : (
             <div className="space-y-6">
-              {Object.entries(groupedByKra).map(([groupKey, group]) => {
-                const periodGoal = group.goals[0];
-                return (
-                  <Card key={groupKey} className="border">
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-base flex items-center gap-2">
-                        <Target className="h-4 w-4" />
-                        {group.kraCode} — {group.kraName}
-                      </CardTitle>
-                      <p className="text-sm text-muted-foreground">
-                        Period: {periodGoal.periodName} ({format(new Date(periodGoal.periodStart), "MMM d, yyyy")} - {format(new Date(periodGoal.periodEnd), "MMM d, yyyy")})
-                      </p>
-                    </CardHeader>
-                    <CardContent>
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>KPI Code</TableHead>
-                            <TableHead>KPI Name</TableHead>
-                            <TableHead>Review Frequency</TableHead>
-                            <TableHead>Input Type</TableHead>
-                            <TableHead>Target</TableHead>
-                            <TableHead>Threshold</TableHead>
-                            <TableHead>Self Rating</TableHead>
-                            <TableHead>Comments</TableHead>
-                            <TableHead>Status</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {group.goals.map((goal) => {
-                            const editKey = getEditKey(goal);
-                            const selfRating = editValues[editKey]?.selfRating ?? goal.selfRating ?? '';
-                            const selfComments = editValues[editKey]?.selfComments ?? goal.selfComments ?? '';
-                            return (
-                              <TableRow key={`${goal.kpiId}_${goal.calendarDetailId}`}>
-                                <TableCell className="font-medium">{goal.kpiCode}</TableCell>
-                                <TableCell>{goal.kpiName}</TableCell>
-                                <TableCell>{goal.reviewFrequency || '-'}</TableCell>
-                                <TableCell className="capitalize">{goal.kpiInputType}</TableCell>
-                                <TableCell>{goal.targetValue}</TableCell>
-                                <TableCell>{goal.thresholdValue || '-'}</TableCell>
-                                <TableCell>
-                                  {isEditable ? (
-                                    <Input
-                                      placeholder="Rating"
-                                      value={selfRating}
-                                      onChange={(e) =>
-                                        setEditValues(prev => ({
-                                          ...prev,
-                                          [editKey]: { ...prev[editKey], selfRating: e.target.value, selfComments: prev[editKey]?.selfComments ?? goal.selfComments ?? '' },
-                                        }))
-                                      }
-                                      className="w-20"
-                                    />
-                                  ) : (
-                                    <span>{goal.selfRating || '-'}</span>
-                                  )}
-                                </TableCell>
-                                <TableCell>
-                                  {isEditable ? (
-                                    <Textarea
-                                      placeholder="Comments"
-                                      value={selfComments}
-                                      onChange={(e) =>
-                                        setEditValues(prev => ({
-                                          ...prev,
-                                          [editKey]: { ...prev[editKey], selfComments: e.target.value, selfRating: prev[editKey]?.selfRating ?? goal.selfRating ?? '' },
-                                        }))
-                                      }
-                                      className="w-40 h-8 min-h-8 text-sm"
-                                    />
-                                  ) : (
-                                    <span className="text-sm">{goal.selfComments || '-'}</span>
-                                  )}
-                                </TableCell>
-                                <TableCell>{getStatusBadge(goal.status)}</TableCell>
-                              </TableRow>
-                            );
-                          })}
-                        </TableBody>
-                      </Table>
-                      {activeCategory === 'approved' && group.goals.some(g => g.managerComments) && (
-                        <div className="mt-3 p-3 bg-muted rounded-md">
-                          <p className="text-sm font-medium">Manager Comments:</p>
-                          {group.goals.filter(g => g.managerComments).map(g => (
-                            <p key={g.kpiId} className="text-sm text-muted-foreground">{g.kpiName}: {g.managerComments}</p>
-                          ))}
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                );
-              })}
+              {Object.entries(groupedByKraPeriod).map(([groupKey, group]) => (
+                <Card key={groupKey} className="border">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Target className="h-4 w-4" />
+                      {group.kraCode} — {group.kraName}
+                    </CardTitle>
+                    <p className="text-sm text-muted-foreground">
+                      Period: {group.periodName} | Review Frequency: {group.reviewFrequency}
+                    </p>
+                  </CardHeader>
+                  <CardContent>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>KPI Code</TableHead>
+                          <TableHead>KPI Name</TableHead>
+                          <TableHead>Input Type</TableHead>
+                          <TableHead>Target</TableHead>
+                          <TableHead>Threshold</TableHead>
+                          <TableHead>Self Rating</TableHead>
+                          <TableHead>Comments</TableHead>
+                          <TableHead>Status</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {group.goals.map((goal) => {
+                          const editKey = getEditKey(goal);
+                          const selfRating = editValues[editKey]?.selfRating ?? goal.selfRating ?? '';
+                          const selfComments = editValues[editKey]?.selfComments ?? goal.selfComments ?? '';
+                          return (
+                            <TableRow key={`${goal.kpiId}_${goal.periodKey}`}>
+                              <TableCell className="font-medium">{goal.kpiCode}</TableCell>
+                              <TableCell>{goal.kpiName}</TableCell>
+                              <TableCell className="capitalize">{goal.kpiInputType}</TableCell>
+                              <TableCell>{goal.targetValue}</TableCell>
+                              <TableCell>{goal.thresholdValue || '-'}</TableCell>
+                              <TableCell>
+                                {isEditable ? (
+                                  <Input
+                                    placeholder="Rating"
+                                    value={selfRating}
+                                    onChange={(e) =>
+                                      setEditValues(prev => ({
+                                        ...prev,
+                                        [editKey]: { ...prev[editKey], selfRating: e.target.value, selfComments: prev[editKey]?.selfComments ?? goal.selfComments ?? '' },
+                                      }))
+                                    }
+                                    className="w-20"
+                                  />
+                                ) : (
+                                  <span>{goal.selfRating || '-'}</span>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                {isEditable ? (
+                                  <Textarea
+                                    placeholder="Comments"
+                                    value={selfComments}
+                                    onChange={(e) =>
+                                      setEditValues(prev => ({
+                                        ...prev,
+                                        [editKey]: { ...prev[editKey], selfComments: e.target.value, selfRating: prev[editKey]?.selfRating ?? goal.selfRating ?? '' },
+                                      }))
+                                    }
+                                    className="w-40 h-8 min-h-8 text-sm"
+                                  />
+                                ) : (
+                                  <span className="text-sm">{goal.selfComments || '-'}</span>
+                                )}
+                              </TableCell>
+                              <TableCell>{getStatusBadge(goal.status)}</TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                    {activeCategory === 'approved' && group.goals.some(g => g.managerComments) && (
+                      <div className="mt-3 p-3 bg-muted rounded-md">
+                        <p className="text-sm font-medium">Manager Comments:</p>
+                        {group.goals.filter(g => g.managerComments).map(g => (
+                          <p key={g.kpiId} className="text-sm text-muted-foreground">{g.kpiName}: {g.managerComments}</p>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
             </div>
           )}
         </CardContent>

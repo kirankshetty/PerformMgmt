@@ -3245,7 +3245,7 @@ export class DatabaseStorage implements IStorage {
     }
     const [result] = await db.insert(kraGoalReviews).values(insertValues)
       .onConflictDoUpdate({
-        target: [kraGoalReviews.employeeId, kraGoalReviews.kpiId, kraGoalReviews.frequencyCalendarDetailId],
+        target: [kraGoalReviews.employeeId, kraGoalReviews.kpiId, kraGoalReviews.periodKey],
         set: updateSet,
       })
       .returning();
