@@ -7274,12 +7274,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json([]);
       }
 
-      const allKras = await storage.getKrasByCompany(companyId);
-      const allKpis = await storage.getKpisByCompany(companyId);
-      const allFreqs = await storage.getFrequencyCalendarsByCompany(companyId);
       const allTargets = await db.select().from(kpiTargets).where(
         inArray(kpiTargets.employeeId, memberIds)
       );
+
+      if (allTargets.length === 0) {
+        return res.json([]);
+      }
+
+      const kpiIds = [...new Set(allTargets.map(t => t.kpiId))];
+      const kraIds = [...new Set(allTargets.map(t => t.kraId))];
+
+      const allKpis = kpiIds.length > 0 ? await db.select().from(kpis).where(inArray(kpis.id, kpiIds)) : [];
+      const allKras = kraIds.length > 0 ? await db.select().from(kras).where(inArray(kras.id, kraIds)) : [];
+
+      const kraFreqIds = [...new Set(allKras.map(k => k.reviewFrequencyId).filter(Boolean))];
+      const allFreqs = kraFreqIds.length > 0 ? await db.select().from(reviewFrequencies).where(inArray(reviewFrequencies.id, kraFreqIds as string[])) : [];
 
       const kpiMap = new Map(allKpis.map(k => [k.id, k]));
       const kraMap = new Map(allKras.map(k => [k.id, k]));

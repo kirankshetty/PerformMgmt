@@ -112,7 +112,7 @@ export default function ReportActivity() {
 
   const { data, isLoading } = useQuery<ActivityRow[]>({
     queryKey: ['/api/reports/activity', appliedParams],
-    queryFn: () => fetch(`/api/reports/activity?${appliedParams}`).then(r => r.json()),
+    queryFn: () => fetch(`/api/reports/activity?${appliedParams}`).then(r => r.json()).then(d => Array.isArray(d) ? d : []),
     enabled: !!fromDate && !!toDate,
   });
 
