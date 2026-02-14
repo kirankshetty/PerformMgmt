@@ -1391,6 +1391,8 @@ export const kraGoalReviews = pgTable("kra_goal_reviews", {
   reviewedAt: timestamp("reviewed_at"),
   reviewedByManagerId: varchar("reviewed_by_manager_id"),
   managerComments: text("manager_comments"),
+  managerRemarksActual: text("manager_remarks_actual"),
+  managerRemarksPipeline: text("manager_remarks_pipeline"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
