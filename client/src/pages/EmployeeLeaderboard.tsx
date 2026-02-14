@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Loader2, Trophy, Medal, Award, Send, Bot, User, Sparkles, ChevronDown, ChevronUp, Filter } from "lucide-react";
+import { Loader2, Trophy, Medal, Award, Send, Bot, User, Sparkles, ChevronDown, ChevronUp, Filter, Users, BarChart3 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -149,6 +149,125 @@ function EmployeeCard({ entry, isMe }: { entry: LeaderboardEntry; isMe: boolean 
   );
 }
 
+interface KpiLeaderEntry {
+  employeeId: string;
+  name: string;
+  department: string;
+  target: number;
+  actual: number;
+  achievement: number;
+  rank: number;
+}
+
+interface KpiGroup {
+  kpiName: string;
+  entries: KpiLeaderEntry[];
+}
+
+function buildKpiWiseData(leaderboard: LeaderboardEntry[]): KpiGroup[] {
+  const kpiMap = new Map<string, KpiLeaderEntry[]>();
+
+  for (const emp of leaderboard) {
+    for (const kpi of emp.kpis) {
+      if (!kpiMap.has(kpi.kpiName)) kpiMap.set(kpi.kpiName, []);
+      kpiMap.get(kpi.kpiName)!.push({
+        employeeId: emp.employeeId,
+        name: emp.name,
+        department: emp.department,
+        target: kpi.target,
+        actual: kpi.actual,
+        achievement: kpi.achievement,
+        rank: 0,
+      });
+    }
+  }
+
+  const groups: KpiGroup[] = [];
+  Array.from(kpiMap.entries()).forEach(([kpiName, entries]: [string, KpiLeaderEntry[]]) => {
+    entries.sort((a: KpiLeaderEntry, b: KpiLeaderEntry) => b.achievement - a.achievement);
+    entries.forEach((e: KpiLeaderEntry, i: number) => (e.rank = i + 1));
+    groups.push({ kpiName, entries });
+  });
+  groups.sort((a, b) => a.kpiName.localeCompare(b.kpiName));
+  return groups;
+}
+
+function KpiGroupCard({ group, myEmployeeId }: { group: KpiGroup; myEmployeeId: string | null }) {
+  const topEntry = group.entries[0];
+  const maxVal = Math.max(...group.entries.map(e => Math.max(e.target, e.actual)), 1);
+
+  const getBarColor = (achievement: number) => {
+    if (achievement >= 100) return 'bg-emerald-500';
+    if (achievement >= 75) return 'bg-blue-500';
+    if (achievement >= 50) return 'bg-amber-500';
+    return 'bg-red-500';
+  };
+
+  const getRankIcon = (rank: number) => {
+    if (rank === 1) return <Trophy className="h-4 w-4 text-yellow-500" />;
+    if (rank === 2) return <Medal className="h-4 w-4 text-gray-400" />;
+    if (rank === 3) return <Award className="h-4 w-4 text-amber-700" />;
+    return <span className="text-xs font-bold text-muted-foreground">#{rank}</span>;
+  };
+
+  return (
+    <Card>
+      <CardHeader className="pb-2 pt-4 px-4">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-semibold">{group.kpiName}</CardTitle>
+          {topEntry && (
+            <Badge variant="outline" className="text-xs gap-1">
+              <Trophy className="h-3 w-3 text-yellow-500" />
+              {topEntry.name}
+            </Badge>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent className="px-4 pb-4 pt-0">
+        <div className="space-y-1.5">
+          {group.entries.map((entry) => {
+            const isMe = entry.employeeId === myEmployeeId;
+            const barPct = Math.min((entry.actual / maxVal) * 100, 100);
+            const targetPct = Math.min((entry.target / maxVal) * 100, 100);
+
+            return (
+              <div
+                key={entry.employeeId}
+                className={`flex items-center gap-2 py-1 px-2 rounded ${isMe ? 'bg-primary/5 ring-1 ring-primary/20' : ''}`}
+              >
+                <div className="w-5 flex items-center justify-center flex-shrink-0">
+                  {getRankIcon(entry.rank)}
+                </div>
+                <div className="w-28 text-xs font-medium truncate flex items-center gap-1" title={entry.name}>
+                  {entry.name}
+                  {isMe && <Badge variant="default" className="text-[9px] px-1 py-0 h-3.5">You</Badge>}
+                </div>
+                <div className="flex-1 relative h-4 bg-muted rounded-sm overflow-hidden">
+                  <div
+                    className={`absolute top-0 left-0 h-full ${getBarColor(entry.achievement)} rounded-sm transition-all duration-500`}
+                    style={{ width: `${barPct}%` }}
+                  />
+                  {entry.target > 0 && (
+                    <div
+                      className="absolute top-0 h-full w-0.5 bg-foreground/40"
+                      style={{ left: `${targetPct}%` }}
+                      title={`Target: ${entry.target.toLocaleString()}`}
+                    />
+                  )}
+                </div>
+                <div className="w-20 text-right text-xs tabular-nums">
+                  <span className="font-semibold">{entry.achievement}%</span>
+                  <span className="text-muted-foreground ml-1">({entry.actual.toLocaleString()})</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function EmployeeLeaderboard() {
   const [fromDate, setFromDate] = useState(() => {
     const d = new Date();
@@ -157,6 +276,7 @@ export default function EmployeeLeaderboard() {
   });
   const [toDate, setToDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [filtersExpanded, setFiltersExpanded] = useState(false);
+  const [viewMode, setViewMode] = useState<'employee' | 'kpi'>('employee');
 
   const [appliedParams, setAppliedParams] = useState<string>(() => {
     const params = new URLSearchParams();
@@ -278,6 +398,7 @@ export default function EmployeeLeaderboard() {
   };
 
   const leaderboard = data?.leaderboard || [];
+  const kpiGroups = buildKpiWiseData(leaderboard);
 
   const myEntry = data?.myEmployeeId
     ? leaderboard.find(e => e.employeeId === data.myEmployeeId)
@@ -322,6 +443,29 @@ export default function EmployeeLeaderboard() {
             </CardContent>
           )}
         </Card>
+
+        {leaderboard.length > 0 && (
+          <div className="flex items-center gap-1 bg-muted rounded-lg p-1 w-fit">
+            <Button
+              variant={viewMode === 'employee' ? 'default' : 'ghost'}
+              size="sm"
+              className="gap-1.5 text-xs h-8"
+              onClick={() => setViewMode('employee')}
+            >
+              <Users className="h-3.5 w-3.5" />
+              Employee Wise
+            </Button>
+            <Button
+              variant={viewMode === 'kpi' ? 'default' : 'ghost'}
+              size="sm"
+              className="gap-1.5 text-xs h-8"
+              onClick={() => setViewMode('kpi')}
+            >
+              <BarChart3 className="h-3.5 w-3.5" />
+              KPI Wise
+            </Button>
+          </div>
+        )}
 
         {data && myEntry && (
           <Card className="bg-gradient-to-r from-primary/10 to-primary/5 border-primary/20">
@@ -371,15 +515,27 @@ export default function EmployeeLeaderboard() {
           </Card>
         ) : (
           <>
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {leaderboard.map((entry) => (
-                <EmployeeCard
-                  key={entry.employeeId}
-                  entry={entry}
-                  isMe={entry.employeeId === data?.myEmployeeId}
-                />
-              ))}
-            </div>
+            {viewMode === 'employee' ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {leaderboard.map((entry) => (
+                  <EmployeeCard
+                    key={entry.employeeId}
+                    entry={entry}
+                    isMe={entry.employeeId === data?.myEmployeeId}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {kpiGroups.map((group) => (
+                  <KpiGroupCard
+                    key={group.kpiName}
+                    group={group}
+                    myEmployeeId={data?.myEmployeeId || null}
+                  />
+                ))}
+              </div>
+            )}
 
             <Card>
               <CardHeader className="pb-3">
