@@ -6772,6 +6772,80 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Manager KRA/Goals Review endpoints
+  app.get('/api/manager/kra-goal-reviews', isAuthenticated, requireRoles(['manager']), async (req: any, res) => {
+    try {
+      const managerId = req.user.claims.sub;
+      const reviews = await storage.getSubmittedKraGoalReviewsForManager(managerId);
+
+      const allUsers = await storage.getUsers({});
+      const userMap = new Map(allUsers.map(u => [u.id, u]));
+
+      const allKpis = await storage.getKpis();
+      const kpiMap = new Map(allKpis.map(k => [k.id, k]));
+
+      const allKras = await storage.getKras();
+      const kraMap = new Map(allKras.map(k => [k.id, k]));
+
+      const enrichedReviews = reviews.map(r => {
+        const employee = userMap.get(r.employeeId);
+        const kpi = kpiMap.get(r.kpiId);
+        const kra = kraMap.get(r.kraId);
+        return {
+          ...r,
+          employeeName: employee ? `${employee.firstName || ''} ${employee.lastName || ''}`.trim() : 'Unknown',
+          employeeCode: employee?.employeeCode || '',
+          employeeEmail: employee?.email || '',
+          kpiCode: kpi?.code || '',
+          kpiName: kpi?.name || '',
+          kpiInputType: kpi?.inputType || '',
+          kraCode: kra?.code || '',
+          kraName: kra?.name || '',
+        };
+      });
+
+      res.json(enrichedReviews);
+    } catch (error: any) {
+      console.error("Error fetching manager KRA goal reviews:", error);
+      res.status(500).json({ message: "Failed to fetch KRA goal reviews" });
+    }
+  });
+
+  app.post('/api/manager/kra-goal-reviews/:id/review', isAuthenticated, requireRoles(['manager']), async (req: any, res) => {
+    try {
+      const managerId = req.user.claims.sub;
+      const reviewId = req.params.id;
+      const { status, managerRemarksActual, managerRemarksPipeline, managerComments } = req.body;
+
+      if (!status || !['approved', 'rejected'].includes(status)) {
+        return res.status(400).json({ message: "Status must be 'approved' or 'rejected'" });
+      }
+
+      const manager = await storage.getUser(managerId);
+      if (!manager) {
+        return res.status(404).json({ message: "Manager not found" });
+      }
+
+      const existingReviews = await storage.getSubmittedKraGoalReviewsForManager(managerId);
+      const review = existingReviews.find(r => r.id === reviewId);
+      if (!review) {
+        return res.status(403).json({ message: "Review not found or not authorized" });
+      }
+
+      const updated = await storage.updateKraGoalReviewByManager(reviewId, managerId, {
+        status,
+        managerRemarksActual: managerRemarksActual || null,
+        managerRemarksPipeline: managerRemarksPipeline || null,
+        managerComments: managerComments || null,
+      });
+
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Error reviewing KRA goal:", error);
+      res.status(500).json({ message: "Failed to review KRA goal" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

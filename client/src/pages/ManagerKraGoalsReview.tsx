@@ -1,0 +1,423 @@
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { Target, CheckCircle, XCircle, Clock, ChevronRight, ArrowLeft } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/hooks/use-toast";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+
+interface ReviewItem {
+  id: string;
+  employeeId: string;
+  kpiTargetId: string;
+  kpiId: string;
+  kraId: string;
+  periodKey: string;
+  periodStartDate: string;
+  periodEndDate: string;
+  selfRating: string | null;
+  pipelineValue: string | null;
+  selfComments: string | null;
+  pipelineRemarks: string | null;
+  status: string;
+  submittedAt: string | null;
+  reviewedAt: string | null;
+  managerComments: string | null;
+  managerRemarksActual: string | null;
+  managerRemarksPipeline: string | null;
+  employeeName: string;
+  employeeCode: string;
+  employeeEmail: string;
+  kpiCode: string;
+  kpiName: string;
+  kpiInputType: string;
+  kraCode: string;
+  kraName: string;
+}
+
+interface EmployeeSummary {
+  employeeId: string;
+  employeeName: string;
+  employeeCode: string;
+  employeeEmail: string;
+  submittedCount: number;
+  approvedCount: number;
+  rejectedCount: number;
+  totalCount: number;
+}
+
+export default function ManagerKraGoalsReview() {
+  const { toast } = useToast();
+  const [selectedEmployee, setSelectedEmployee] = useState<string | null>(null);
+  const [managerRemarks, setManagerRemarks] = useState<Record<string, { remarksActual: string; remarksPipeline: string }>>({});
+
+  const { data: reviews, isLoading } = useQuery<ReviewItem[]>({
+    queryKey: ["/api/manager/kra-goal-reviews"],
+  });
+
+  const reviewMutation = useMutation({
+    mutationFn: async ({ id, status, managerRemarksActual, managerRemarksPipeline }: { id: string; status: string; managerRemarksActual: string; managerRemarksPipeline: string }) => {
+      const response = await apiRequest("POST", `/api/manager/kra-goal-reviews/${id}/review`, {
+        status,
+        managerRemarksActual,
+        managerRemarksPipeline,
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/manager/kra-goal-reviews"] });
+      toast({ title: "Success", description: "Review updated successfully" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to update review", variant: "destructive" });
+    },
+  });
+
+  const employeeSummaries: EmployeeSummary[] = [];
+  if (reviews) {
+    const empMap = new Map<string, EmployeeSummary>();
+    for (const r of reviews) {
+      if (!empMap.has(r.employeeId)) {
+        empMap.set(r.employeeId, {
+          employeeId: r.employeeId,
+          employeeName: r.employeeName,
+          employeeCode: r.employeeCode,
+          employeeEmail: r.employeeEmail,
+          submittedCount: 0,
+          approvedCount: 0,
+          rejectedCount: 0,
+          totalCount: 0,
+        });
+      }
+      const summary = empMap.get(r.employeeId)!;
+      summary.totalCount++;
+      if (r.status === 'submitted') summary.submittedCount++;
+      if (r.status === 'approved') summary.approvedCount++;
+      if (r.status === 'rejected') summary.rejectedCount++;
+    }
+    employeeSummaries.push(...Array.from(empMap.values()));
+  }
+
+  const employeeReviews = reviews?.filter(r => r.employeeId === selectedEmployee) || [];
+
+  const groupedByKra = employeeReviews.reduce<Record<string, { kraCode: string; kraName: string; reviews: ReviewItem[] }>>((acc, review) => {
+    const key = `${review.kraId}_${review.periodKey}`;
+    if (!acc[key]) {
+      acc[key] = { kraCode: review.kraCode, kraName: review.kraName, reviews: [] };
+    }
+    acc[key].reviews.push(review);
+    return acc;
+  }, {});
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'submitted': return <Badge className="bg-blue-100 text-blue-800">Submitted</Badge>;
+      case 'approved': return <Badge className="bg-green-100 text-green-800">Approved</Badge>;
+      case 'rejected': return <Badge variant="destructive">Rejected</Badge>;
+      default: return <Badge variant="outline">{status}</Badge>;
+    }
+  };
+
+  const handleAction = (reviewId: string, status: 'approved' | 'rejected') => {
+    const remarks = managerRemarks[reviewId] || { remarksActual: '', remarksPipeline: '' };
+    reviewMutation.mutate({
+      id: reviewId,
+      status,
+      managerRemarksActual: remarks.remarksActual,
+      managerRemarksPipeline: remarks.remarksPipeline,
+    });
+  };
+
+  const updateRemarks = (reviewId: string, field: 'remarksActual' | 'remarksPipeline', value: string) => {
+    setManagerRemarks(prev => ({
+      ...prev,
+      [reviewId]: {
+        ...prev[reviewId],
+        remarksActual: prev[reviewId]?.remarksActual || '',
+        remarksPipeline: prev[reviewId]?.remarksPipeline || '',
+        [field]: value,
+      },
+    }));
+  };
+
+  if (isLoading) {
+    return (
+      <div className="p-6 space-y-6">
+        <h1 className="text-2xl font-bold">KRAs/Goals Review</h1>
+        <Skeleton className="h-64" />
+      </div>
+    );
+  }
+
+  if (selectedEmployee) {
+    const selectedEmp = employeeSummaries.find(e => e.employeeId === selectedEmployee);
+    return (
+      <div className="p-6 space-y-6">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="sm" onClick={() => setSelectedEmployee(null)}>
+            <ArrowLeft className="h-4 w-4 mr-1" />
+            Back
+          </Button>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <Target className="h-6 w-6" />
+            KRAs/Goals Review — {selectedEmp?.employeeName}
+          </h1>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Employee Code: {selectedEmp?.employeeCode} | Email: {selectedEmp?.employeeEmail}
+        </p>
+
+        {Object.keys(groupedByKra).length === 0 ? (
+          <Card>
+            <CardContent className="py-12 text-center text-muted-foreground">
+              <Target className="h-12 w-12 mx-auto mb-3 opacity-50" />
+              <p>No submitted KPIs found for this employee</p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-6">
+            {Object.entries(groupedByKra).map(([groupKey, group]) => (
+              <Card key={groupKey} className="border">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Target className="h-4 w-4" />
+                    {group.kraCode} — {group.kraName}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>KPI Code</TableHead>
+                        <TableHead>KPI Name</TableHead>
+                        <TableHead>Input Type</TableHead>
+                        <TableHead>Actual Value</TableHead>
+                        <TableHead>Pipeline Value</TableHead>
+                        <TableHead>Period</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {group.reviews.map((review) => {
+                        const remarkActual = managerRemarks[review.id]?.remarksActual ?? review.managerRemarksActual ?? '';
+                        const remarkPipeline = managerRemarks[review.id]?.remarksPipeline ?? review.managerRemarksPipeline ?? '';
+                        const periodStart = new Date(review.periodStartDate);
+                        const periodEnd = new Date(review.periodEndDate);
+                        const periodDisplay = `${periodStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${periodEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+                        return (
+                          <>
+                            <TableRow key={review.id}>
+                              <TableCell className="font-medium">{review.kpiCode}</TableCell>
+                              <TableCell>{review.kpiName}</TableCell>
+                              <TableCell className="capitalize">{review.kpiInputType}</TableCell>
+                              <TableCell>{review.selfRating || '-'}</TableCell>
+                              <TableCell>{review.pipelineValue || '-'}</TableCell>
+                              <TableCell className="text-sm">{periodDisplay}</TableCell>
+                              <TableCell>{getStatusBadge(review.status)}</TableCell>
+                              <TableCell>
+                                {review.status === 'submitted' && (
+                                  <div className="flex gap-1">
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="text-green-600 hover:bg-green-50"
+                                      onClick={() => handleAction(review.id, 'approved')}
+                                      disabled={reviewMutation.isPending}
+                                    >
+                                      <CheckCircle className="h-4 w-4 mr-1" />
+                                      Approve
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="text-red-600 hover:bg-red-50"
+                                      onClick={() => handleAction(review.id, 'rejected')}
+                                      disabled={reviewMutation.isPending}
+                                    >
+                                      <XCircle className="h-4 w-4 mr-1" />
+                                      Reject
+                                    </Button>
+                                  </div>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                            {review.selfComments && (
+                              <TableRow key={`${review.id}_emp_remarks`}>
+                                <TableCell colSpan={8} className="pt-0 pb-1">
+                                  <div className="flex items-start gap-3">
+                                    <span className="text-sm font-medium text-muted-foreground whitespace-nowrap w-48 shrink-0 mt-1">Employee Remarks (Actual):</span>
+                                    <span className="text-sm">{review.selfComments}</span>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            )}
+                            {review.pipelineRemarks && (
+                              <TableRow key={`${review.id}_emp_pipeline`}>
+                                <TableCell colSpan={8} className="pt-0 pb-1">
+                                  <div className="flex items-start gap-3">
+                                    <span className="text-sm font-medium text-muted-foreground whitespace-nowrap w-48 shrink-0 mt-1">Employee Remarks (Pipeline):</span>
+                                    <span className="text-sm">{review.pipelineRemarks}</span>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            )}
+                            <TableRow key={`${review.id}_mgr_actual`}>
+                              <TableCell colSpan={8} className="pt-0 pb-1">
+                                <div className="flex items-start gap-3">
+                                  <span className="text-sm font-medium text-muted-foreground whitespace-nowrap w-48 shrink-0 mt-2">Manager Remarks (Actual):</span>
+                                  {review.status === 'submitted' ? (
+                                    <Textarea
+                                      placeholder="Enter your remarks for actual value..."
+                                      value={remarkActual}
+                                      onChange={(e) => updateRemarks(review.id, 'remarksActual', e.target.value)}
+                                      className="flex-1 min-h-[60px] text-sm"
+                                    />
+                                  ) : (
+                                    <span className="text-sm mt-2">{review.managerRemarksActual || '-'}</span>
+                                  )}
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                            <TableRow key={`${review.id}_mgr_pipeline`} className="border-b">
+                              <TableCell colSpan={8} className="pt-0 pb-3">
+                                <div className="flex items-start gap-3">
+                                  <span className="text-sm font-medium text-muted-foreground whitespace-nowrap w-48 shrink-0 mt-2">Manager Remarks (Pipeline):</span>
+                                  {review.status === 'submitted' ? (
+                                    <Textarea
+                                      placeholder="Enter your remarks for pipeline value..."
+                                      value={remarkPipeline}
+                                      onChange={(e) => updateRemarks(review.id, 'remarksPipeline', e.target.value)}
+                                      className="flex-1 min-h-[60px] text-sm"
+                                    />
+                                  ) : (
+                                    <span className="text-sm mt-2">{review.managerRemarksPipeline || '-'}</span>
+                                  )}
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          </>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-6 space-y-6">
+      <h1 className="text-2xl font-bold flex items-center gap-2">
+        <Target className="h-6 w-6" />
+        KRAs/Goals Review
+      </h1>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card>
+          <CardContent className="p-4 flex items-center gap-3">
+            <Clock className="h-8 w-8 text-blue-500" />
+            <div>
+              <p className="text-2xl font-bold">{employeeSummaries.reduce((sum, e) => sum + e.submittedCount, 0)}</p>
+              <p className="text-xs text-muted-foreground">Pending Review</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 flex items-center gap-3">
+            <CheckCircle className="h-8 w-8 text-green-500" />
+            <div>
+              <p className="text-2xl font-bold">{employeeSummaries.reduce((sum, e) => sum + e.approvedCount, 0)}</p>
+              <p className="text-xs text-muted-foreground">Approved</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 flex items-center gap-3">
+            <XCircle className="h-8 w-8 text-red-500" />
+            <div>
+              <p className="text-2xl font-bold">{employeeSummaries.reduce((sum, e) => sum + e.rejectedCount, 0)}</p>
+              <p className="text-xs text-muted-foreground">Rejected</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Employees with Submitted KPIs</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {employeeSummaries.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <Target className="h-12 w-12 mx-auto mb-3 opacity-50" />
+              <p>No employees have submitted KPIs for review</p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Employee Code</TableHead>
+                  <TableHead>Employee Name</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Pending</TableHead>
+                  <TableHead>Approved</TableHead>
+                  <TableHead>Rejected</TableHead>
+                  <TableHead>Total</TableHead>
+                  <TableHead></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {employeeSummaries.map((emp) => (
+                  <TableRow
+                    key={emp.employeeId}
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => setSelectedEmployee(emp.employeeId)}
+                  >
+                    <TableCell className="font-medium">{emp.employeeCode}</TableCell>
+                    <TableCell>{emp.employeeName}</TableCell>
+                    <TableCell>{emp.employeeEmail}</TableCell>
+                    <TableCell>
+                      {emp.submittedCount > 0 && (
+                        <Badge className="bg-blue-100 text-blue-800">{emp.submittedCount}</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {emp.approvedCount > 0 && (
+                        <Badge className="bg-green-100 text-green-800">{emp.approvedCount}</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {emp.rejectedCount > 0 && (
+                        <Badge variant="destructive">{emp.rejectedCount}</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>{emp.totalCount}</TableCell>
+                    <TableCell>
+                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

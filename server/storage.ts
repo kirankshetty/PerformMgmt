@@ -354,6 +354,8 @@ export interface IStorage {
   upsertKraGoalReview(review: InsertKraGoalReview): Promise<KraGoalReview>;
   updateKraGoalReviewStatus(id: string, status: string, employeeId?: string): Promise<KraGoalReview>;
   bulkUpsertKraGoalReviews(reviews: InsertKraGoalReview[]): Promise<KraGoalReview[]>;
+  getSubmittedKraGoalReviewsForManager(managerId: string): Promise<KraGoalReview[]>;
+  updateKraGoalReviewByManager(id: string, managerId: string, data: { status: string; managerRemarksActual?: string | null; managerRemarksPipeline?: string | null; managerComments?: string | null }): Promise<KraGoalReview>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3280,6 +3282,43 @@ export class DatabaseStorage implements IStorage {
       results.push(result);
     }
     return results;
+  }
+
+  async getSubmittedKraGoalReviewsForManager(managerId: string): Promise<KraGoalReview[]> {
+    const teamMembers = await db.select().from(users).where(eq(users.reportingManagerId, managerId));
+    const teamIds = teamMembers.map(m => m.id);
+    if (teamIds.length === 0) return [];
+    return await db.select().from(kraGoalReviews).where(
+      and(
+        inArray(kraGoalReviews.employeeId, teamIds),
+        inArray(kraGoalReviews.status, ['submitted', 'approved', 'rejected'])
+      )
+    ).orderBy(desc(kraGoalReviews.submittedAt));
+  }
+
+  async updateKraGoalReviewByManager(id: string, managerId: string, data: { status: string; managerRemarksActual?: string | null; managerRemarksPipeline?: string | null; managerComments?: string | null }): Promise<KraGoalReview> {
+    const teamMembers = await db.select({ id: users.id }).from(users).where(eq(users.reportingManagerId, managerId));
+    const teamIds = teamMembers.map(m => m.id);
+    if (teamIds.length === 0) throw new Error("No team members found");
+
+    const updateData: any = {
+      status: data.status,
+      reviewedByManagerId: managerId,
+      reviewedAt: new Date(),
+      updatedAt: new Date(),
+    };
+    if (data.managerRemarksActual !== undefined) updateData.managerRemarksActual = data.managerRemarksActual;
+    if (data.managerRemarksPipeline !== undefined) updateData.managerRemarksPipeline = data.managerRemarksPipeline;
+    if (data.managerComments !== undefined) updateData.managerComments = data.managerComments;
+    const [result] = await db.update(kraGoalReviews)
+      .set(updateData)
+      .where(and(
+        eq(kraGoalReviews.id, id),
+        inArray(kraGoalReviews.employeeId, teamIds)
+      ))
+      .returning();
+    if (!result) throw new Error("Review not found or not authorized");
+    return result;
   }
 }
 
