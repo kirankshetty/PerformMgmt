@@ -238,6 +238,7 @@ export interface IStorage {
   // KRA / Goals operations
   getKras(createdById: string): Promise<Kra[]>;
   getKra(id: string, createdById: string): Promise<Kra | undefined>;
+  getKraById(id: string): Promise<Kra | undefined>;
   getKraWithKpis(id: string, createdById: string): Promise<{ kra: Kra; kpis: Kpi[] } | undefined>;
   createKra(kra: InsertKra, kpiList: InsertKpi[], createdById: string): Promise<Kra>;
   updateKra(id: string, kra: Partial<InsertKra>, kpiList: InsertKpi[], createdById: string): Promise<Kra>;
@@ -1707,6 +1708,11 @@ export class DatabaseStorage implements IStorage {
         eq(kras.createdById, createdById)
       )
     );
+    return kra;
+  }
+
+  async getKraById(id: string): Promise<Kra | undefined> {
+    const [kra] = await db.select().from(kras).where(eq(kras.id, id));
     return kra;
   }
 

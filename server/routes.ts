@@ -6416,23 +6416,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const companyAdmins = await storage.getUsers({ role: 'admin', companyId: employee.companyId });
-      const adminId = companyAdmins.length > 0 ? companyAdmins[0].id : null;
-      if (!adminId) {
-        return res.json({ goals: [], counts: { pending: 0, new: 0, toBeSubmitted: 0, pendingApproval: 0, approved: 0 } });
-      }
 
       const kraIds = [...new Set(targets.map(t => t.kraId))];
       const kraMap: Record<string, any> = {};
       const kpiMap: Record<string, any> = {};
       const reviewFreqMap: Record<string, string> = {};
 
-      const reviewFreqList = await storage.getReviewFrequencies(adminId);
-      for (const rf of reviewFreqList) {
-        reviewFreqMap[rf.id] = rf.code;
+      for (const admin of companyAdmins) {
+        const reviewFreqList = await storage.getReviewFrequencies(admin.id);
+        for (const rf of reviewFreqList) {
+          reviewFreqMap[rf.id] = rf.code;
+        }
       }
 
       for (const kraId of kraIds) {
-        const kra = await storage.getKra(kraId, adminId);
+        const kra = await storage.getKraById(kraId);
         if (kra) {
           kraMap[kraId] = kra;
           const kpiList = await storage.getKpisByKraId(kraId);
@@ -6442,7 +6440,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      const allCalendars = await storage.getFrequencyCalendars(adminId);
+      const allCalendars: any[] = [];
+      for (const admin of companyAdmins) {
+        const cals = await storage.getFrequencyCalendars(admin.id);
+        for (const c of cals) {
+          if (!allCalendars.find((ac: any) => ac.id === c.id)) {
+            allCalendars.push(c);
+          }
+        }
+      }
       const allDetails: any[] = [];
       for (const cal of allCalendars) {
         const details = await storage.getFrequencyCalendarDetailsByCalendarId(cal.id);
