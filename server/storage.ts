@@ -319,6 +319,7 @@ export interface IStorage {
   // KPI Weight operations
   createInitiatedAppraisalKpiWeight(weight: any): Promise<any>;
   createInitiatedAppraisalKraWeight(weight: any): Promise<any>;
+  getKraWeightsByEmployeeId(employeeId: string): Promise<Record<string, number>>;
   getEmployeeIdsWithExistingEvaluations(appraisalGroupId: string, excludeAppraisalId: string): Promise<Set<string>>;
   getEmployeeIdsWithExistingEvaluationsForCalendarDetails(appraisalGroupId: string, excludeAppraisalId: string, frequencyCalendarDetailIds: string[]): Promise<Set<string>>;
 
@@ -2739,6 +2740,24 @@ export class DatabaseStorage implements IStorage {
   async createInitiatedAppraisalKraWeight(weight: any): Promise<any> {
     const [newWeight] = await db.insert(initiatedAppraisalKraWeights).values(weight).returning();
     return newWeight;
+  }
+
+  async getKraWeightsByEmployeeId(employeeId: string): Promise<Record<string, number>> {
+    const results = await db
+      .select({
+        kraId: initiatedAppraisalKraWeights.kraId,
+        weightage: initiatedAppraisalKraWeights.weightage,
+      })
+      .from(initiatedAppraisalKraWeights)
+      .innerJoin(initiatedAppraisals, eq(initiatedAppraisalKraWeights.initiatedAppraisalId, initiatedAppraisals.id))
+      .innerJoin(appraisalGroupMembers, eq(initiatedAppraisals.appraisalGroupId, appraisalGroupMembers.appraisalGroupId))
+      .where(eq(appraisalGroupMembers.userId, employeeId));
+
+    const weightMap: Record<string, number> = {};
+    for (const r of results) {
+      weightMap[r.kraId] = r.weightage;
+    }
+    return weightMap;
   }
 
   async getEmployeeIdsWithExistingEvaluations(appraisalGroupId: string, excludeAppraisalId: string): Promise<Set<string>> {

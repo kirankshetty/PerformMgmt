@@ -87,6 +87,7 @@ interface TargetData {
   employee: TargetMember;
   kras: KraWithKpis[];
   existingTargets: Record<string, ExistingTarget>;
+  kraWeights?: Record<string, number>;
 }
 
 interface TargetEntry {
@@ -612,6 +613,11 @@ export default function SetTargetsKraGoals() {
                       <CardTitle className="text-base flex items-center gap-2">
                         <Target className="h-4 w-4 text-blue-600" />
                         {kra.code} — {kra.displayName}
+                        {targetData.kraWeights && targetData.kraWeights[kra.id] != null && (
+                          <Badge variant="secondary" className="ml-2 text-xs">
+                            Weightage: {targetData.kraWeights[kra.id]}%
+                          </Badge>
+                        )}
                       </CardTitle>
                       {kra.description && (
                         <p className="text-sm text-muted-foreground">{kra.description}</p>

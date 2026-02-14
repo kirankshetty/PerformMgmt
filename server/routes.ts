@@ -6305,6 +6305,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         targetMap[t.kpiId] = t;
       }
 
+      const kraWeights = await storage.getKraWeightsByEmployeeId(employeeId);
+
       res.json({
         employee: {
           id: employee.id,
@@ -6315,6 +6317,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         },
         kras: krasWithKpis,
         existingTargets: targetMap,
+        kraWeights,
       });
     } catch (error: any) {
       console.error("Error fetching targets:", error);
@@ -6689,7 +6692,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         approved: goals.filter(g => g.category === 'approved').length,
       };
 
-      res.json({ goals, counts });
+      const kraWeights = await storage.getKraWeightsByEmployeeId(employeeId);
+
+      res.json({ goals, counts, kraWeights });
     } catch (error: any) {
       console.error("Error fetching KRA goal reviews:", error);
       res.status(500).json({ message: "Failed to fetch KRA goal reviews" });
@@ -6819,12 +6824,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      const employeeKraWeightsMap = new Map<string, Record<string, number>>();
+      const uniqueEmployeeIds = [...new Set(reviews.map(r => r.employeeId))];
+      for (const empId of uniqueEmployeeIds) {
+        const weights = await storage.getKraWeightsByEmployeeId(empId);
+        employeeKraWeightsMap.set(empId, weights);
+      }
+
       const enrichedReviews = reviews.map(r => {
         const employee = userMap.get(r.employeeId);
         const kpi = kpiMap.get(r.kpiId);
         const kra = kraMap.get(r.kraId);
         const kpiTarget = kpiTargetMap.get(r.kpiTargetId);
         const reviewFreq = kra?.reviewFrequencyId ? rfMap.get(kra.reviewFrequencyId) : null;
+        const empWeights = employeeKraWeightsMap.get(r.employeeId) || {};
         return {
           ...r,
           employeeName: employee ? `${employee.firstName || ''} ${employee.lastName || ''}`.trim() : 'Unknown',
@@ -6838,6 +6851,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           kpiWeightage: kpi?.weightageContribution || 0,
           kraCode: kra?.code || '',
           kraName: kra?.displayName || '',
+          kraWeightage: r.kraId ? (empWeights[r.kraId] || 0) : 0,
           reviewFrequency: reviewFreq?.description || reviewFreq?.code || '',
           targetValue: kpiTarget?.targetValue || '',
           thresholdValue: kpiTarget?.thresholdValue || '',

@@ -57,6 +57,7 @@ interface GoalsData {
     pendingApproval: number;
     approved: number;
   };
+  kraWeights?: Record<string, number>;
 }
 
 type CategoryType = 'pending' | 'new' | 'toBeSubmitted' | 'pendingApproval' | 'approved';
@@ -123,10 +124,11 @@ export default function KraGoalsSelfReview() {
     }
   };
 
-  const groupedByKraPeriod = filteredGoals.reduce<Record<string, { kraCode: string; kraName: string; periodKey: string; periodName: string; periodStart: string; periodEnd: string; reviewFrequency: string; goals: GoalItem[] }>>((acc, goal) => {
+  const groupedByKraPeriod = filteredGoals.reduce<Record<string, { kraId: string; kraCode: string; kraName: string; periodKey: string; periodName: string; periodStart: string; periodEnd: string; reviewFrequency: string; goals: GoalItem[] }>>((acc, goal) => {
     const key = `${goal.kraId}_${goal.periodKey}`;
     if (!acc[key]) {
       acc[key] = {
+        kraId: goal.kraId,
         kraCode: goal.kraCode,
         kraName: goal.kraName,
         periodKey: goal.periodKey,
@@ -331,6 +333,11 @@ export default function KraGoalsSelfReview() {
                     <CardTitle className="text-base flex items-center gap-2">
                       <Target className="h-4 w-4" />
                       {group.kraCode} — {group.kraName}
+                      {data?.kraWeights && data.kraWeights[group.kraId] != null && (
+                        <Badge variant="secondary" className="ml-2 text-xs">
+                          Weightage: {data.kraWeights[group.kraId]}%
+                        </Badge>
+                      )}
                     </CardTitle>
                     <p className="text-sm text-muted-foreground">
                       Period: {group.periodName} | Review Frequency: {group.reviewFrequency}

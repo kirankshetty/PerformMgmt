@@ -48,6 +48,7 @@ interface ReviewItem {
   kpiWeightage: number;
   kraCode: string;
   kraName: string;
+  kraWeightage: number;
   reviewFrequency: string;
   targetValue: string;
   thresholdValue: string;
@@ -142,10 +143,10 @@ export default function ManagerKraGoalsReview() {
   };
 
   const renderKpiTable = (items: ReviewItem[], showActions: boolean) => {
-    const groupedByKra = items.reduce<Record<string, { kraCode: string; kraName: string; reviews: ReviewItem[] }>>((acc, review) => {
+    const groupedByKra = items.reduce<Record<string, { kraCode: string; kraName: string; kraWeightage: number; reviews: ReviewItem[] }>>((acc, review) => {
       const key = `${review.kraId}_${review.periodKey}`;
       if (!acc[key]) {
-        acc[key] = { kraCode: review.kraCode, kraName: review.kraName, reviews: [] };
+        acc[key] = { kraCode: review.kraCode, kraName: review.kraName, kraWeightage: review.kraWeightage || 0, reviews: [] };
       }
       acc[key].reviews.push(review);
       return acc;
@@ -166,6 +167,11 @@ export default function ManagerKraGoalsReview() {
             <h4 className="text-sm font-semibold flex items-center gap-2 mb-2">
               <Target className="h-3 w-3" />
               {group.kraCode} — {group.kraName}
+              {group.kraWeightage > 0 && (
+                <Badge variant="secondary" className="ml-2 text-xs">
+                  Weightage: {group.kraWeightage}%
+                </Badge>
+              )}
             </h4>
             <Table>
               <TableHeader>
