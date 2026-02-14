@@ -1370,3 +1370,66 @@ export const insertKpiTargetSchema = createInsertSchema(kpiTargets).omit({
 
 export type KpiTarget = typeof kpiTargets.$inferSelect;
 export type InsertKpiTarget = z.infer<typeof insertKpiTargetSchema>;
+
+export const kraGoalReviewStatusEnum = pgEnum('kra_goal_review_status', ['draft', 'submitted', 'approved', 'rejected']);
+
+export const kraGoalReviews = pgTable("kra_goal_reviews", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  employeeId: varchar("employee_id").notNull(),
+  kpiTargetId: varchar("kpi_target_id").notNull(),
+  kpiId: varchar("kpi_id").notNull(),
+  kraId: varchar("kra_id").notNull(),
+  frequencyCalendarDetailId: varchar("frequency_calendar_detail_id").notNull(),
+  selfRating: varchar("self_rating"),
+  selfComments: text("self_comments"),
+  status: kraGoalReviewStatusEnum("status").default('draft').notNull(),
+  submittedAt: timestamp("submitted_at"),
+  reviewedAt: timestamp("reviewed_at"),
+  reviewedByManagerId: varchar("reviewed_by_manager_id"),
+  managerComments: text("manager_comments"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("kra_goal_reviews_employee_id_idx").on(table.employeeId),
+  index("kra_goal_reviews_kpi_target_id_idx").on(table.kpiTargetId),
+  index("kra_goal_reviews_status_idx").on(table.status),
+  unique().on(table.employeeId, table.kpiId, table.frequencyCalendarDetailId),
+]);
+
+export const kraGoalReviewsRelations = relations(kraGoalReviews, ({ one }) => ({
+  employee: one(users, {
+    fields: [kraGoalReviews.employeeId],
+    references: [users.id],
+  }),
+  kpiTarget: one(kpiTargets, {
+    fields: [kraGoalReviews.kpiTargetId],
+    references: [kpiTargets.id],
+  }),
+  kpi: one(kpis, {
+    fields: [kraGoalReviews.kpiId],
+    references: [kpis.id],
+  }),
+  kra: one(kras, {
+    fields: [kraGoalReviews.kraId],
+    references: [kras.id],
+  }),
+  calendarDetail: one(frequencyCalendarDetails, {
+    fields: [kraGoalReviews.frequencyCalendarDetailId],
+    references: [frequencyCalendarDetails.id],
+  }),
+  reviewedByManager: one(users, {
+    fields: [kraGoalReviews.reviewedByManagerId],
+    references: [users.id],
+  }),
+}));
+
+export const insertKraGoalReviewSchema = createInsertSchema(kraGoalReviews).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  submittedAt: true,
+  reviewedAt: true,
+});
+
+export type KraGoalReview = typeof kraGoalReviews.$inferSelect;
+export type InsertKraGoalReview = z.infer<typeof insertKraGoalReviewSchema>;

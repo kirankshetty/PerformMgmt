@@ -6398,6 +6398,215 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ==========================================
+  // Employee KRA/Goals Self Review Routes
+  // ==========================================
+
+  app.get('/api/employee/kra-goal-reviews', isAuthenticated, requireRoles(['employee']), async (req: any, res) => {
+    try {
+      const employeeId = req.user.claims.sub;
+      const employee = await storage.getUser(employeeId);
+      if (!employee || !employee.companyId) {
+        return res.status(404).json({ message: "Employee or company not found" });
+      }
+
+      const targets = await storage.getKpiTargetsByEmployee(employeeId);
+      if (targets.length === 0) {
+        return res.json({ goals: [], counts: { pending: 0, new: 0, toBeSubmitted: 0, pendingApproval: 0, approved: 0 } });
+      }
+
+      const companyAdmins = await storage.getUsers({ role: 'admin', companyId: employee.companyId });
+      const adminId = companyAdmins.length > 0 ? companyAdmins[0].id : null;
+      if (!adminId) {
+        return res.json({ goals: [], counts: { pending: 0, new: 0, toBeSubmitted: 0, pendingApproval: 0, approved: 0 } });
+      }
+
+      const kraIds = [...new Set(targets.map(t => t.kraId))];
+      const kraMap: Record<string, any> = {};
+      const kpiMap: Record<string, any> = {};
+      const reviewFreqMap: Record<string, string> = {};
+
+      const reviewFreqList = await storage.getReviewFrequencies(adminId);
+      for (const rf of reviewFreqList) {
+        reviewFreqMap[rf.id] = rf.code;
+      }
+
+      for (const kraId of kraIds) {
+        const kra = await storage.getKra(kraId, adminId);
+        if (kra) {
+          kraMap[kraId] = kra;
+          const kpiList = await storage.getKpisByKraId(kraId);
+          for (const kpi of kpiList) {
+            kpiMap[kpi.id] = kpi;
+          }
+        }
+      }
+
+      const allCalendars = await storage.getFrequencyCalendars(adminId);
+      const allDetails: any[] = [];
+      for (const cal of allCalendars) {
+        const details = await storage.getFrequencyCalendarDetailsByCalendarId(cal.id);
+        for (const d of details) {
+          allDetails.push({ ...d, calendarCode: cal.code, reviewFrequencyId: cal.reviewFrequencyId });
+        }
+      }
+
+      const existingReviews = await storage.getKraGoalReviewsByEmployee(employeeId);
+      const reviewMap: Record<string, any> = {};
+      for (const r of existingReviews) {
+        reviewMap[`${r.kpiId}_${r.frequencyCalendarDetailId}`] = r;
+      }
+
+      const now = new Date();
+      const goals: any[] = [];
+
+      for (const target of targets) {
+        const kra = kraMap[target.kraId];
+        if (!kra) continue;
+
+        const relevantDetails = allDetails.filter(d => d.reviewFrequencyId === kra.reviewFrequencyId);
+
+        for (const detail of relevantDetails) {
+          const endDate = new Date(detail.endDate);
+          const startDate = new Date(detail.startDate);
+          const kpi = kpiMap[target.kpiId];
+          const existingReview = reviewMap[`${target.kpiId}_${detail.id}`];
+
+          const reviewStatus = existingReview?.status || 'not_started';
+          const isOverdue = endDate < now;
+          const isCurrent = startDate <= now && endDate >= now;
+
+          let category = '';
+          if (reviewStatus === 'approved') {
+            category = 'approved';
+          } else if (reviewStatus === 'submitted') {
+            category = 'pendingApproval';
+          } else if (reviewStatus === 'draft') {
+            category = 'toBeSubmitted';
+          } else if (reviewStatus === 'rejected' && isOverdue) {
+            category = 'pending';
+          } else if (reviewStatus === 'rejected' && isCurrent) {
+            category = 'new';
+          } else if (reviewStatus === 'not_started' && isOverdue) {
+            category = 'pending';
+          } else if (reviewStatus === 'not_started' && isCurrent) {
+            category = 'new';
+          } else {
+            continue;
+          }
+
+          goals.push({
+            id: existingReview?.id || null,
+            kpiTargetId: target.id,
+            kpiId: target.kpiId,
+            kraId: target.kraId,
+            kraCode: kra.code,
+            kraName: kra.displayName,
+            kpiCode: kpi?.code || '',
+            kpiName: kpi?.name || '',
+            kpiInputType: kpi?.inputType || 'number',
+            reviewFrequency: kra.reviewFrequencyId ? (reviewFreqMap[kra.reviewFrequencyId] || '') : '',
+            targetValue: target.targetValue,
+            thresholdValue: target.thresholdValue,
+            calendarDetailId: detail.id,
+            periodName: detail.displayName,
+            periodStart: detail.startDate,
+            periodEnd: detail.endDate,
+            selfRating: existingReview?.selfRating || '',
+            selfComments: existingReview?.selfComments || '',
+            status: reviewStatus,
+            category,
+            submittedAt: existingReview?.submittedAt || null,
+            reviewedAt: existingReview?.reviewedAt || null,
+            managerComments: existingReview?.managerComments || null,
+            frequencyCalendarDetailId: detail.id,
+          });
+        }
+      }
+
+      const counts = {
+        pending: goals.filter(g => g.category === 'pending').length,
+        new: goals.filter(g => g.category === 'new').length,
+        toBeSubmitted: goals.filter(g => g.category === 'toBeSubmitted').length,
+        pendingApproval: goals.filter(g => g.category === 'pendingApproval').length,
+        approved: goals.filter(g => g.category === 'approved').length,
+      };
+
+      res.json({ goals, counts });
+    } catch (error: any) {
+      console.error("Error fetching KRA goal reviews:", error);
+      res.status(500).json({ message: "Failed to fetch KRA goal reviews" });
+    }
+  });
+
+  app.post('/api/employee/kra-goal-reviews/save', isAuthenticated, requireRoles(['employee']), async (req: any, res) => {
+    try {
+      const employeeId = req.user.claims.sub;
+      const { reviews } = req.body;
+
+      if (!reviews || !Array.isArray(reviews)) {
+        return res.status(400).json({ message: "Reviews array required" });
+      }
+
+      const results = [];
+      for (const review of reviews) {
+        if (!review.kpiTargetId || !review.kpiId || !review.kraId || !review.frequencyCalendarDetailId) {
+          continue;
+        }
+        const saved = await storage.upsertKraGoalReview({
+          employeeId,
+          kpiTargetId: review.kpiTargetId,
+          kpiId: review.kpiId,
+          kraId: review.kraId,
+          frequencyCalendarDetailId: review.frequencyCalendarDetailId,
+          selfRating: review.selfRating || null,
+          selfComments: review.selfComments || null,
+          status: 'draft',
+        });
+        results.push(saved);
+      }
+
+      res.json({ message: `Saved ${results.length} review(s)`, reviews: results });
+    } catch (error: any) {
+      console.error("Error saving KRA goal reviews:", error);
+      res.status(500).json({ message: "Failed to save KRA goal reviews" });
+    }
+  });
+
+  app.post('/api/employee/kra-goal-reviews/submit', isAuthenticated, requireRoles(['employee']), async (req: any, res) => {
+    try {
+      const employeeId = req.user.claims.sub;
+      const { reviews } = req.body;
+
+      if (!reviews || !Array.isArray(reviews)) {
+        return res.status(400).json({ message: "Reviews array required" });
+      }
+
+      const results = [];
+      for (const review of reviews) {
+        if (!review.kpiTargetId || !review.kpiId || !review.kraId || !review.frequencyCalendarDetailId) {
+          continue;
+        }
+        const saved = await storage.upsertKraGoalReview({
+          employeeId,
+          kpiTargetId: review.kpiTargetId,
+          kpiId: review.kpiId,
+          kraId: review.kraId,
+          frequencyCalendarDetailId: review.frequencyCalendarDetailId,
+          selfRating: review.selfRating || null,
+          selfComments: review.selfComments || null,
+          status: 'submitted',
+        });
+        results.push(saved);
+      }
+
+      res.json({ message: `Submitted ${results.length} review(s)`, reviews: results });
+    } catch (error: any) {
+      console.error("Error submitting KRA goal reviews:", error);
+      res.status(500).json({ message: "Failed to submit KRA goal reviews" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

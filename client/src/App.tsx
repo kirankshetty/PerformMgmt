@@ -41,6 +41,7 @@ import MemberDevelopmentGoals from "@/pages/MemberDevelopmentGoals";
 import FeedbackRequests from "@/pages/FeedbackRequests";
 import FeedbackRequestForm from "@/pages/FeedbackRequestForm";
 import SetTargetsKraGoals from "@/pages/SetTargetsKraGoals";
+import KraGoalsSelfReview from "@/pages/KraGoalsSelfReview";
 import Settings from "@/pages/Settings";
 
 function Router() {
@@ -88,6 +89,7 @@ function Router() {
           <Route path="/member-development-goals" component={MemberDevelopmentGoals} />
           <Route path="/meetings" component={Meetings} />
           <Route path="/development-goals" component={DevelopmentGoals} />
+          <Route path="/kra-goals-self-review" component={KraGoalsSelfReview} />
           <Route path="/feedback-requests" component={FeedbackRequests} />
           <Route path="/feedback-requests/:id" component={FeedbackRequestForm} />
           <Route path="/hr-meetings" component={HRMeetingsView} />

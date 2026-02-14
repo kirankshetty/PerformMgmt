@@ -104,6 +104,9 @@ import {
   type SubmitFeedback,
   type KpiTarget,
   type InsertKpiTarget,
+  kraGoalReviews,
+  type KraGoalReview,
+  type InsertKraGoalReview,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, asc, like, inArray, or, sql, isNotNull } from "drizzle-orm";
@@ -344,6 +347,12 @@ export interface IStorage {
   upsertKpiTarget(target: InsertKpiTarget): Promise<KpiTarget>;
   deleteKpiTarget(id: string): Promise<void>;
   deleteKpiTargetsByEmployee(employeeId: string, managerId: string): Promise<void>;
+
+  getKraGoalReviewsByEmployee(employeeId: string): Promise<KraGoalReview[]>;
+  getKraGoalReview(id: string, employeeId: string): Promise<KraGoalReview | undefined>;
+  upsertKraGoalReview(review: InsertKraGoalReview): Promise<KraGoalReview>;
+  updateKraGoalReviewStatus(id: string, status: string, employeeId?: string): Promise<KraGoalReview>;
+  bulkUpsertKraGoalReviews(reviews: InsertKraGoalReview[]): Promise<KraGoalReview[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3196,6 +3205,73 @@ export class DatabaseStorage implements IStorage {
         eq(kpiTargets.setByManagerId, managerId)
       )
     );
+  }
+
+  async getKraGoalReviewsByEmployee(employeeId: string): Promise<KraGoalReview[]> {
+    return await db.select().from(kraGoalReviews).where(
+      eq(kraGoalReviews.employeeId, employeeId)
+    ).orderBy(desc(kraGoalReviews.createdAt));
+  }
+
+  async getKraGoalReview(id: string, employeeId: string): Promise<KraGoalReview | undefined> {
+    const [review] = await db.select().from(kraGoalReviews).where(
+      and(
+        eq(kraGoalReviews.id, id),
+        eq(kraGoalReviews.employeeId, employeeId)
+      )
+    );
+    return review;
+  }
+
+  async upsertKraGoalReview(review: InsertKraGoalReview): Promise<KraGoalReview> {
+    const updateSet: any = {
+      selfRating: review.selfRating,
+      selfComments: review.selfComments,
+      status: review.status,
+      updatedAt: new Date(),
+    };
+    if (review.status === 'submitted') {
+      updateSet.submittedAt = new Date();
+    }
+    const insertValues: any = { ...review };
+    if (review.status === 'submitted') {
+      insertValues.submittedAt = new Date();
+    }
+    const [result] = await db.insert(kraGoalReviews).values(insertValues)
+      .onConflictDoUpdate({
+        target: [kraGoalReviews.employeeId, kraGoalReviews.kpiId, kraGoalReviews.frequencyCalendarDetailId],
+        set: updateSet,
+      })
+      .returning();
+    return result;
+  }
+
+  async updateKraGoalReviewStatus(id: string, status: string, employeeId?: string): Promise<KraGoalReview> {
+    const conditions = [eq(kraGoalReviews.id, id)];
+    if (employeeId) {
+      conditions.push(eq(kraGoalReviews.employeeId, employeeId));
+    }
+    const updateData: any = { status, updatedAt: new Date() };
+    if (status === 'submitted') {
+      updateData.submittedAt = new Date();
+    }
+    if (status === 'approved' || status === 'rejected') {
+      updateData.reviewedAt = new Date();
+    }
+    const [result] = await db.update(kraGoalReviews)
+      .set(updateData)
+      .where(and(...conditions))
+      .returning();
+    return result;
+  }
+
+  async bulkUpsertKraGoalReviews(reviews: InsertKraGoalReview[]): Promise<KraGoalReview[]> {
+    const results: KraGoalReview[] = [];
+    for (const review of reviews) {
+      const result = await this.upsertKraGoalReview(review);
+      results.push(result);
+    }
+    return results;
   }
 }
 

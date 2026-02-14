@@ -69,6 +69,7 @@ const navItems: NavItem[] = [
   { href: "/set-targets", label: "Set Targets for KRA/Goal", icon: Target, roles: ["manager"] },
   { href: "/member-development-goals", label: "Member Development Goals", icon: Target, roles: ["manager"] },
   { href: "/development-goals", label: "My Development Goals", icon: Target, roles: ["employee"] },
+  { href: "/kra-goals-self-review", label: "KRAs/Goals Self Review", icon: ClipboardList, roles: ["employee"] },
   { href: "/feedback-requests", label: "Feedback Requests", icon: MessageSquare, roles: ["employee"] },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
