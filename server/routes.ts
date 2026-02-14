@@ -6811,6 +6811,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      const locationMap = new Map<string, string>();
+      for (const user of allUsers) {
+        if (user.locationId && !locationMap.has(user.locationId)) {
+          const loc = await storage.getLocation(user.locationId);
+          if (loc) locationMap.set(user.locationId, loc.name);
+        }
+      }
+
       const enrichedReviews = reviews.map(r => {
         const employee = userMap.get(r.employeeId);
         const kpi = kpiMap.get(r.kpiId);
@@ -6822,6 +6830,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           employeeName: employee ? `${employee.firstName || ''} ${employee.lastName || ''}`.trim() : 'Unknown',
           employeeCode: employee?.employeeCode || '',
           employeeEmail: employee?.email || '',
+          employeeDepartment: employee?.department || '',
+          employeeLocation: employee?.locationId ? (locationMap.get(employee.locationId) || '') : '',
           kpiCode: kpi?.code || '',
           kpiName: kpi?.name || '',
           kpiInputType: kpi?.inputType || '',

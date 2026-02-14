@@ -1,6 +1,6 @@
 import { useState, Fragment } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Target, CheckCircle, XCircle, Clock, ChevronRight, ArrowLeft } from "lucide-react";
+import { Target, CheckCircle, XCircle, Clock, ChevronRight, ArrowLeft, User, MapPin, Building } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -40,6 +40,8 @@ interface ReviewItem {
   employeeName: string;
   employeeCode: string;
   employeeEmail: string;
+  employeeDepartment: string;
+  employeeLocation: string;
   kpiCode: string;
   kpiName: string;
   kpiInputType: string;
@@ -453,35 +455,75 @@ export default function ManagerKraGoalsReview() {
         </Card>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>
-            {statusFilter === 'submitted' ? 'Pending KPIs' : statusFilter === 'approved' ? 'Approved KPIs' : statusFilter === 'rejected' ? 'Rejected KPIs' : 'Submitted KPIs'}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {(() => {
-            const filteredReviews = statusFilter ? reviews?.filter(r => r.status === statusFilter) : reviews?.filter(r => r.status === 'submitted');
-            if (!filteredReviews || filteredReviews.length === 0) {
-              return (
+      {(() => {
+        const filteredReviews = statusFilter ? reviews?.filter(r => r.status === statusFilter) : reviews?.filter(r => r.status === 'submitted');
+        if (!filteredReviews || filteredReviews.length === 0) {
+          return (
+            <Card>
+              <CardHeader>
+                <CardTitle>
+                  {statusFilter === 'submitted' ? 'Pending KPIs' : statusFilter === 'approved' ? 'Approved KPIs' : statusFilter === 'rejected' ? 'Rejected KPIs' : 'Submitted KPIs'}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
                 <div className="text-center py-12 text-muted-foreground">
                   <Target className="h-12 w-12 mx-auto mb-3 opacity-50" />
                   <p>No KPIs found</p>
                 </div>
-              );
-            }
-            const isHistory = statusFilter === 'approved' || statusFilter === 'rejected';
-            const totalRecords = filteredReviews.length;
-            const totalPages = isHistory ? Math.ceil(totalRecords / historyPageSize) : 1;
-            const displayReviews = isHistory
-              ? filteredReviews.slice((historyCurrentPage - 1) * historyPageSize, historyCurrentPage * historyPageSize)
-              : filteredReviews;
-            const showActions = statusFilter !== 'rejected' && statusFilter !== 'approved';
-            return (
-              <>
+              </CardContent>
+            </Card>
+          );
+        }
+        const isHistory = statusFilter === 'approved' || statusFilter === 'rejected';
+        const showActions = statusFilter !== 'rejected' && statusFilter !== 'approved';
+
+        const employeeGroups = new Map<string, { info: { id: string; name: string; code: string; department: string; location: string }; items: ReviewItem[] }>();
+        for (const r of filteredReviews) {
+          if (!employeeGroups.has(r.employeeId)) {
+            employeeGroups.set(r.employeeId, {
+              info: { id: r.employeeId, name: r.employeeName, code: r.employeeCode, department: r.employeeDepartment, location: r.employeeLocation },
+              items: [],
+            });
+          }
+          employeeGroups.get(r.employeeId)!.items.push(r);
+        }
+
+        return Array.from(employeeGroups.values()).map((group) => {
+          const totalRecords = group.items.length;
+          const totalPages = isHistory ? Math.ceil(totalRecords / historyPageSize) : 1;
+          const displayItems = isHistory
+            ? group.items.slice((historyCurrentPage - 1) * historyPageSize, historyCurrentPage * historyPageSize)
+            : group.items;
+
+          return (
+            <Card key={group.info.id}>
+              <CardHeader>
+                <CardTitle className="text-lg">
+                  {statusFilter === 'submitted' ? 'Pending KPIs' : statusFilter === 'approved' ? 'Approved KPIs' : statusFilter === 'rejected' ? 'Rejected KPIs' : 'Submitted KPIs'}
+                </CardTitle>
+                <div className="flex flex-wrap items-center gap-x-6 gap-y-2 mt-2 text-sm text-muted-foreground">
+                  <span className="flex items-center gap-1.5">
+                    <User className="h-4 w-4" />
+                    <span className="font-medium text-foreground">{group.info.code}</span> — {group.info.name}
+                  </span>
+                  {group.info.location && (
+                    <span className="flex items-center gap-1.5">
+                      <MapPin className="h-4 w-4" />
+                      {group.info.location}
+                    </span>
+                  )}
+                  {group.info.department && (
+                    <span className="flex items-center gap-1.5">
+                      <Building className="h-4 w-4" />
+                      {group.info.department}
+                    </span>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent>
                 {isHistory && (
                   <div className="flex items-center justify-between mb-4">
-                    <p className="text-sm text-muted-foreground font-medium">View History — Showing {displayReviews.length} of {totalRecords} records</p>
+                    <p className="text-sm text-muted-foreground font-medium">View History — Showing {displayItems.length} of {totalRecords} records</p>
                     <div className="flex items-center gap-2">
                       <span className="text-sm text-muted-foreground">Records per page:</span>
                       <Select
@@ -504,7 +546,6 @@ export default function ManagerKraGoalsReview() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Employee Name</TableHead>
                         <TableHead>KPI Name</TableHead>
                         <TableHead>Review Frequency</TableHead>
                         <TableHead>Weightage</TableHead>
@@ -518,7 +559,7 @@ export default function ManagerKraGoalsReview() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {displayReviews.map((review) => {
+                      {displayItems.map((review) => {
                         const periodStart = new Date(review.periodStartDate);
                         const periodEnd = new Date(review.periodEndDate);
                         const periodDisplay = `${periodStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${periodEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
@@ -528,7 +569,6 @@ export default function ManagerKraGoalsReview() {
                             className={`hover:bg-muted/50 ${showActions ? 'cursor-pointer' : ''}`}
                             onClick={() => { if (showActions) setSelectedEmployee(review.employeeId); }}
                           >
-                            <TableCell>{review.employeeName}</TableCell>
                             <TableCell>{review.kpiName}</TableCell>
                             <TableCell>{review.reviewFrequency}</TableCell>
                             <TableCell>{review.kpiWeightage}%</TableCell>
@@ -583,11 +623,11 @@ export default function ManagerKraGoalsReview() {
                     </div>
                   </div>
                 )}
-              </>
-            );
-          })()}
-        </CardContent>
-      </Card>
+              </CardContent>
+            </Card>
+          );
+        });
+      })()}
     </div>
   );
 }
