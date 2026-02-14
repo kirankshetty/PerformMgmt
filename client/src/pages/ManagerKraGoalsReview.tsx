@@ -13,6 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -54,6 +55,8 @@ export default function ManagerKraGoalsReview() {
   const { toast } = useToast();
   const [selectedEmployee, setSelectedEmployee] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [historyPageSize, setHistoryPageSize] = useState(10);
+  const [historyCurrentPage, setHistoryCurrentPage] = useState(1);
   const [managerRemarks, setManagerRemarks] = useState<Record<string, { remarksActual: string; remarksPipeline: string }>>({});
   const [rejectingReviewId, setRejectingReviewId] = useState<string | null>(null);
   const [rejectionReason, setRejectionReason] = useState("");
@@ -414,7 +417,7 @@ export default function ManagerKraGoalsReview() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card
           className={`cursor-pointer transition-shadow hover:shadow-md ${statusFilter === 'submitted' ? 'ring-2 ring-blue-500' : ''}`}
-          onClick={() => setStatusFilter(statusFilter === 'submitted' ? null : 'submitted')}
+          onClick={() => { setStatusFilter(statusFilter === 'submitted' ? null : 'submitted'); setHistoryCurrentPage(1); }}
         >
           <CardContent className="p-4 flex items-center gap-3">
             <Clock className="h-8 w-8 text-blue-500" />
@@ -426,7 +429,7 @@ export default function ManagerKraGoalsReview() {
         </Card>
         <Card
           className={`cursor-pointer transition-shadow hover:shadow-md ${statusFilter === 'approved' ? 'ring-2 ring-green-500' : ''}`}
-          onClick={() => setStatusFilter(statusFilter === 'approved' ? null : 'approved')}
+          onClick={() => { setStatusFilter(statusFilter === 'approved' ? null : 'approved'); setHistoryCurrentPage(1); }}
         >
           <CardContent className="p-4 flex items-center gap-3">
             <CheckCircle className="h-8 w-8 text-green-500" />
@@ -438,7 +441,7 @@ export default function ManagerKraGoalsReview() {
         </Card>
         <Card
           className={`cursor-pointer transition-shadow hover:shadow-md ${statusFilter === 'rejected' ? 'ring-2 ring-red-500' : ''}`}
-          onClick={() => setStatusFilter(statusFilter === 'rejected' ? null : 'rejected')}
+          onClick={() => { setStatusFilter(statusFilter === 'rejected' ? null : 'rejected'); setHistoryCurrentPage(1); }}
         >
           <CardContent className="p-4 flex items-center gap-3">
             <XCircle className="h-8 w-8 text-red-500" />
@@ -458,7 +461,7 @@ export default function ManagerKraGoalsReview() {
         </CardHeader>
         <CardContent>
           {(() => {
-            const filteredReviews = statusFilter ? reviews?.filter(r => r.status === statusFilter) : reviews;
+            const filteredReviews = statusFilter ? reviews?.filter(r => r.status === statusFilter) : reviews?.filter(r => r.status === 'submitted');
             if (!filteredReviews || filteredReviews.length === 0) {
               return (
                 <div className="text-center py-12 text-muted-foreground">
@@ -467,66 +470,120 @@ export default function ManagerKraGoalsReview() {
                 </div>
               );
             }
+            const isHistory = statusFilter === 'approved' || statusFilter === 'rejected';
+            const totalRecords = filteredReviews.length;
+            const totalPages = isHistory ? Math.ceil(totalRecords / historyPageSize) : 1;
+            const displayReviews = isHistory
+              ? filteredReviews.slice((historyCurrentPage - 1) * historyPageSize, historyCurrentPage * historyPageSize)
+              : filteredReviews;
+            const showActions = statusFilter !== 'rejected' && statusFilter !== 'approved';
             return (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Employee Name</TableHead>
-                      <TableHead>KPI Name</TableHead>
-                      <TableHead>Review Frequency</TableHead>
-                      <TableHead>Weightage</TableHead>
-                      <TableHead>Period</TableHead>
-                      <TableHead>Target Value</TableHead>
-                      <TableHead>Threshold Value</TableHead>
-                      <TableHead>Actual Value</TableHead>
-                      <TableHead>Pipeline Value</TableHead>
-                      <TableHead>Status</TableHead>
-                      {statusFilter !== 'rejected' && <TableHead>Actions</TableHead>}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredReviews.map((review) => {
-                      const periodStart = new Date(review.periodStartDate);
-                      const periodEnd = new Date(review.periodEndDate);
-                      const periodDisplay = `${periodStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${periodEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
-                      return (
-                        <TableRow
-                          key={review.id}
-                          className={`hover:bg-muted/50 ${review.status !== 'rejected' ? 'cursor-pointer' : ''}`}
-                          onClick={() => { if (review.status !== 'rejected') setSelectedEmployee(review.employeeId); }}
-                        >
-                          <TableCell>{review.employeeName}</TableCell>
-                          <TableCell>{review.kpiName}</TableCell>
-                          <TableCell>{review.reviewFrequency}</TableCell>
-                          <TableCell>{review.kpiWeightage}%</TableCell>
-                          <TableCell className="text-sm min-w-[120px]">{periodDisplay}</TableCell>
-                          <TableCell>{review.targetValue || '-'}</TableCell>
-                          <TableCell>{review.thresholdValue || '-'}</TableCell>
-                          <TableCell>{review.selfRating || '-'}</TableCell>
-                          <TableCell>{review.pipelineValue || '-'}</TableCell>
-                          <TableCell>
-                            {review.status === 'submitted' && <Badge className="bg-blue-100 text-blue-800">Pending</Badge>}
-                            {review.status === 'approved' && <Badge className="bg-green-100 text-green-800">Approved</Badge>}
-                            {review.status === 'rejected' && (
-                              <Badge variant="destructive" title={review.managerComments ? `Reason: ${review.managerComments}` : 'Rejected'} className="cursor-help">
-                                Rejected
-                              </Badge>
-                            )}
-                            {!['submitted', 'approved', 'rejected'].includes(review.status) && <Badge variant="outline">{review.status}</Badge>}
-                          </TableCell>
-                          {review.status !== 'rejected' && (
+              <>
+                {isHistory && (
+                  <div className="flex items-center justify-between mb-4">
+                    <p className="text-sm text-muted-foreground font-medium">View History — Showing {displayReviews.length} of {totalRecords} records</p>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-muted-foreground">Records per page:</span>
+                      <Select
+                        value={String(historyPageSize)}
+                        onValueChange={(val) => { setHistoryPageSize(Number(val)); setHistoryCurrentPage(1); }}
+                      >
+                        <SelectTrigger className="w-[80px] h-8">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="10">10</SelectItem>
+                          <SelectItem value="25">25</SelectItem>
+                          <SelectItem value="50">50</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                )}
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Employee Name</TableHead>
+                        <TableHead>KPI Name</TableHead>
+                        <TableHead>Review Frequency</TableHead>
+                        <TableHead>Weightage</TableHead>
+                        <TableHead>Period</TableHead>
+                        <TableHead>Target Value</TableHead>
+                        <TableHead>Threshold Value</TableHead>
+                        <TableHead>Actual Value</TableHead>
+                        <TableHead>Pipeline Value</TableHead>
+                        <TableHead>Status</TableHead>
+                        {showActions && <TableHead>Actions</TableHead>}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {displayReviews.map((review) => {
+                        const periodStart = new Date(review.periodStartDate);
+                        const periodEnd = new Date(review.periodEndDate);
+                        const periodDisplay = `${periodStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${periodEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+                        return (
+                          <TableRow
+                            key={review.id}
+                            className={`hover:bg-muted/50 ${showActions ? 'cursor-pointer' : ''}`}
+                            onClick={() => { if (showActions) setSelectedEmployee(review.employeeId); }}
+                          >
+                            <TableCell>{review.employeeName}</TableCell>
+                            <TableCell>{review.kpiName}</TableCell>
+                            <TableCell>{review.reviewFrequency}</TableCell>
+                            <TableCell>{review.kpiWeightage}%</TableCell>
+                            <TableCell className="text-sm min-w-[120px]">{periodDisplay}</TableCell>
+                            <TableCell>{review.targetValue || '-'}</TableCell>
+                            <TableCell>{review.thresholdValue || '-'}</TableCell>
+                            <TableCell>{review.selfRating || '-'}</TableCell>
+                            <TableCell>{review.pipelineValue || '-'}</TableCell>
                             <TableCell>
-                              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                              {review.status === 'submitted' && <Badge className="bg-blue-100 text-blue-800">Pending</Badge>}
+                              {review.status === 'approved' && <Badge className="bg-green-100 text-green-800">Approved</Badge>}
+                              {review.status === 'rejected' && (
+                                <Badge variant="destructive" title={review.managerComments ? `Reason: ${review.managerComments}` : 'Rejected'} className="cursor-help">
+                                  Rejected
+                                </Badge>
+                              )}
+                              {!['submitted', 'approved', 'rejected'].includes(review.status) && <Badge variant="outline">{review.status}</Badge>}
                             </TableCell>
-                          )}
-                          {review.status === 'rejected' && statusFilter !== 'rejected' && <TableCell />}
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
+                            {showActions && (
+                              <TableCell>
+                                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                              </TableCell>
+                            )}
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+                {isHistory && totalPages > 1 && (
+                  <div className="flex items-center justify-between mt-4 pt-4 border-t">
+                    <p className="text-sm text-muted-foreground">
+                      Page {historyCurrentPage} of {totalPages}
+                    </p>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={historyCurrentPage <= 1}
+                        onClick={() => setHistoryCurrentPage(p => p - 1)}
+                      >
+                        Previous
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={historyCurrentPage >= totalPages}
+                        onClick={() => setHistoryCurrentPage(p => p + 1)}
+                      >
+                        Next
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </>
             );
           })()}
         </CardContent>
