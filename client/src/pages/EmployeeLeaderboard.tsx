@@ -2,13 +2,19 @@ import { useState, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2, Trophy, Medal, Award, Send, Bot, User, Sparkles } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { RoleGuard } from "@/components/RoleGuard";
+
+interface KpiDetail {
+  kpiName: string;
+  target: number;
+  actual: number;
+  achievement: number;
+}
 
 interface LeaderboardEntry {
   employeeId: string;
@@ -20,6 +26,7 @@ interface LeaderboardEntry {
   totalWeightageAchieved: number;
   totalWeightage: number;
   rank: number;
+  kpis: KpiDetail[];
 }
 
 interface LeaderboardData {
@@ -31,6 +38,115 @@ interface LeaderboardData {
 interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
+}
+
+function KpiBar({ kpi }: { kpi: KpiDetail }) {
+  const barMax = Math.max(kpi.target, kpi.actual, 1);
+  const actualPct = Math.min((kpi.actual / barMax) * 100, 100);
+
+  const barColor = kpi.achievement >= 100
+    ? 'bg-emerald-500'
+    : kpi.achievement >= 75
+      ? 'bg-blue-500'
+      : kpi.achievement >= 50
+        ? 'bg-amber-500'
+        : 'bg-red-500';
+
+  return (
+    <div className="flex items-center gap-2 py-1">
+      <div className="w-24 text-xs font-medium text-muted-foreground truncate" title={kpi.kpiName}>
+        {kpi.kpiName}
+      </div>
+      <div className="flex-1 relative h-5 bg-muted rounded-sm overflow-hidden">
+        <div
+          className={`absolute top-0 left-0 h-full ${barColor} rounded-sm transition-all duration-500`}
+          style={{ width: `${actualPct}%` }}
+        />
+        {kpi.target > 0 && (
+          <div
+            className="absolute top-0 h-full w-0.5 bg-foreground/40"
+            style={{ left: `${Math.min((kpi.target / barMax) * 100, 100)}%` }}
+            title={`Target: ${kpi.target.toLocaleString()}`}
+          />
+        )}
+      </div>
+      <div className="w-16 text-right text-xs font-semibold tabular-nums">
+        {kpi.actual.toLocaleString()}
+      </div>
+    </div>
+  );
+}
+
+function EmployeeCard({ entry, isMe }: { entry: LeaderboardEntry; isMe: boolean }) {
+  const getRankDisplay = (rank: number) => {
+    if (rank === 1) return <Trophy className="h-5 w-5 text-yellow-500" />;
+    if (rank === 2) return <Medal className="h-5 w-5 text-gray-400" />;
+    if (rank === 3) return <Award className="h-5 w-5 text-amber-700" />;
+    return <span className="text-lg font-bold text-muted-foreground">#{rank}</span>;
+  };
+
+  const getScoreBg = (score: number) => {
+    if (score >= 90) return 'bg-emerald-500';
+    if (score >= 70) return 'bg-blue-500';
+    if (score >= 50) return 'bg-amber-500';
+    return 'bg-red-500';
+  };
+
+  return (
+    <Card className={`relative overflow-hidden transition-shadow hover:shadow-lg ${isMe ? 'ring-2 ring-primary shadow-md' : ''}`}>
+      {isMe && (
+        <div className="absolute top-0 left-0 right-0 h-1 bg-primary" />
+      )}
+      <CardContent className="pt-4 pb-4 px-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <div className="h-10 w-10 rounded-full bg-slate-700 flex items-center justify-center text-white font-bold text-sm">
+              {entry.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+            </div>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <h3 className="font-semibold text-sm leading-tight">{entry.name}</h3>
+                {isMe && <Badge variant="default" className="text-[10px] px-1.5 py-0 h-4">You</Badge>}
+              </div>
+              <p className="text-xs text-muted-foreground">{entry.department}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center justify-center h-8 w-8">
+              {getRankDisplay(entry.rank)}
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-0">
+          {entry.kpis.slice(0, 5).map((kpi, idx) => (
+            <KpiBar key={idx} kpi={kpi} />
+          ))}
+          {entry.kpis.length > 5 && (
+            <p className="text-xs text-muted-foreground text-center mt-1">
+              +{entry.kpis.length - 5} more KPIs
+            </p>
+          )}
+          {entry.kpis.length === 0 && (
+            <p className="text-xs text-muted-foreground text-center py-2">No KPI data</p>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between mt-3 pt-2 border-t">
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-muted-foreground">Target line shown</span>
+            <div className="w-3 h-3 border-l-2 border-foreground/40" />
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-muted-foreground">Score:</span>
+            <Badge className={`${getScoreBg(entry.overallScore)} text-white text-xs font-bold px-2`}>
+              {entry.overallScore}%
+            </Badge>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 export default function EmployeeLeaderboard() {
@@ -79,17 +195,22 @@ export default function EmployeeLeaderboard() {
 
   const buildContext = () => {
     if (!data) return '';
-    const myEntry = data.leaderboard.find(e => e.rank === data.myRank);
+    const myEntry = data.leaderboard.find(e => e.employeeId === data.myEmployeeId);
     const lines: string[] = [];
     lines.push(`My Rank: ${data.myRank || 'N/A'} out of ${data.leaderboard.length} employees`);
     if (myEntry) {
       lines.push(`My Overall Score: ${myEntry.overallScore}%`);
-      lines.push(`My KPIs Reviewed: ${myEntry.kpiCount}`);
-      lines.push(`My Weightage Achieved: ${myEntry.totalWeightageAchieved} / ${myEntry.totalWeightage}`);
+      lines.push(`My KPIs:`);
+      myEntry.kpis.forEach(k => {
+        lines.push(`  - ${k.kpiName}: Actual ${k.actual}, Target ${k.target}, Achievement ${k.achievement}%`);
+      });
     }
     lines.push(`\nTop 5 performers:`);
     data.leaderboard.slice(0, 5).forEach(e => {
       lines.push(`  #${e.rank} ${e.name} (${e.department}) - Score: ${e.overallScore}%`);
+      e.kpis.slice(0, 3).forEach(k => {
+        lines.push(`    ${k.kpiName}: ${k.actual}/${k.target} (${k.achievement}%)`);
+      });
     });
     return lines.join('\n');
   };
@@ -157,28 +278,18 @@ export default function EmployeeLeaderboard() {
     }
   };
 
-  const getRankIcon = (rank: number) => {
-    if (rank === 1) return <Trophy className="h-5 w-5 text-yellow-500" />;
-    if (rank === 2) return <Medal className="h-5 w-5 text-gray-400" />;
-    if (rank === 3) return <Award className="h-5 w-5 text-amber-600" />;
-    return <span className="text-sm text-muted-foreground font-medium">#{rank}</span>;
-  };
-
-  const getScoreColor = (score: number) => {
-    if (score >= 90) return 'text-green-600 dark:text-green-400';
-    if (score >= 70) return 'text-blue-600 dark:text-blue-400';
-    if (score >= 50) return 'text-yellow-600 dark:text-yellow-400';
-    return 'text-red-600 dark:text-red-400';
-  };
-
   const leaderboard = data?.leaderboard || [];
+
+  const myEntry = data?.myEmployeeId
+    ? leaderboard.find(e => e.employeeId === data.myEmployeeId)
+    : null;
 
   return (
     <RoleGuard allowedRoles={["employee"]}>
       <div className="p-6 space-y-6">
         <div>
-          <h1 className="text-2xl font-bold">Leaderboard</h1>
-          <p className="text-muted-foreground">See how you compare with your colleagues and get AI-powered insights</p>
+          <h1 className="text-2xl font-bold">KPI Leaderboard</h1>
+          <p className="text-muted-foreground">See how you compare with your colleagues across KPIs</p>
         </div>
 
         <Card>
@@ -197,127 +308,93 @@ export default function EmployeeLeaderboard() {
           </CardContent>
         </Card>
 
-        {data && data.myRank && (
+        {data && myEntry && (
           <Card className="bg-gradient-to-r from-primary/10 to-primary/5 border-primary/20">
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-4">
-                <div className="h-16 w-16 rounded-full bg-primary/20 flex items-center justify-center">
-                  {getRankIcon(data.myRank)}
+            <CardContent className="pt-5 pb-5">
+              <div className="flex items-center gap-6 flex-wrap">
+                <div className="flex items-center gap-3">
+                  <div className="h-14 w-14 rounded-full bg-primary/20 flex items-center justify-center">
+                    {data.myRank === 1 ? <Trophy className="h-7 w-7 text-yellow-500" /> :
+                     data.myRank === 2 ? <Medal className="h-7 w-7 text-gray-400" /> :
+                     data.myRank === 3 ? <Award className="h-7 w-7 text-amber-700" /> :
+                     <span className="text-xl font-bold">#{data.myRank}</span>}
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Your Rank</p>
+                    <p className="text-2xl font-bold">#{data.myRank} <span className="text-sm font-normal text-muted-foreground">of {leaderboard.length}</span></p>
+                  </div>
                 </div>
+                <div className="h-10 w-px bg-border hidden sm:block" />
                 <div>
-                  <p className="text-sm text-muted-foreground">Your Rank</p>
-                  <p className="text-3xl font-bold">#{data.myRank}</p>
-                  <p className="text-sm text-muted-foreground">out of {leaderboard.length} employees</p>
+                  <p className="text-sm text-muted-foreground">Overall Score</p>
+                  <p className="text-2xl font-bold">{myEntry.overallScore}%</p>
                 </div>
-                {(() => {
-                  const entry = data.myEmployeeId 
-                    ? leaderboard.find(e => e.employeeId === data.myEmployeeId)
-                    : leaderboard.find(e => e.rank === data.myRank);
-                  if (!entry) return null;
-                  return (
-                    <div className="ml-auto text-right">
-                      <p className="text-sm text-muted-foreground">Overall Score</p>
-                      <p className={`text-3xl font-bold ${getScoreColor(entry.overallScore)}`}>
-                        {entry.overallScore}%
-                      </p>
-                    </div>
-                  );
-                })()}
+                <div className="h-10 w-px bg-border hidden sm:block" />
+                <div>
+                  <p className="text-sm text-muted-foreground">KPIs Tracked</p>
+                  <p className="text-2xl font-bold">{myEntry.kpis.length}</p>
+                </div>
+                <div className="h-10 w-px bg-border hidden sm:block" />
+                <div>
+                  <p className="text-sm text-muted-foreground">Wtg. Achieved</p>
+                  <p className="text-2xl font-bold">{myEntry.totalWeightageAchieved} / {myEntry.totalWeightage}</p>
+                </div>
               </div>
             </CardContent>
           </Card>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2">
-            <Card>
-              <CardHeader>
-                <CardTitle>Performance Rankings</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {isLoading ? (
-                  <div className="flex justify-center p-8">
-                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                  </div>
-                ) : leaderboard.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-8">No performance data available for the selected period.</p>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="w-16">Rank</TableHead>
-                          <TableHead>Name</TableHead>
-                          <TableHead>Department</TableHead>
-                          <TableHead className="text-right">KPIs</TableHead>
-                          <TableHead className="text-right">Wtg. Achieved</TableHead>
-                          <TableHead className="text-right">Score</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {leaderboard.map((entry) => {
-                          const isMe = data?.myEmployeeId ? entry.employeeId === data.myEmployeeId : false;
-                          return (
-                            <TableRow key={entry.employeeId} className={isMe ? 'bg-primary/5' : ''}>
-                              <TableCell>
-                                <div className="flex items-center justify-center">
-                                  {getRankIcon(entry.rank)}
-                                </div>
-                              </TableCell>
-                              <TableCell className="font-medium">
-                                {entry.name}
-                                {isMe && <Badge variant="outline" className="ml-2 text-xs">You</Badge>}
-                              </TableCell>
-                              <TableCell>{entry.department}</TableCell>
-                              <TableCell className="text-right">{entry.kpiCount}</TableCell>
-                              <TableCell className="text-right">
-                                {entry.totalWeightageAchieved} / {entry.totalWeightage}
-                              </TableCell>
-                              <TableCell className={`text-right font-bold ${getScoreColor(entry.overallScore)}`}>
-                                {entry.overallScore}%
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })}
-                      </TableBody>
-                    </Table>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+        {isLoading ? (
+          <div className="flex justify-center p-12">
+            <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" />
           </div>
+        ) : leaderboard.length === 0 ? (
+          <Card>
+            <CardContent className="py-12">
+              <p className="text-center text-muted-foreground">No performance data available for the selected period.</p>
+            </CardContent>
+          </Card>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {leaderboard.map((entry) => (
+                <EmployeeCard
+                  key={entry.employeeId}
+                  entry={entry}
+                  isMe={entry.employeeId === data?.myEmployeeId}
+                />
+              ))}
+            </div>
 
-          <div className="lg:col-span-1">
-            <Card className="h-full flex flex-col">
+            <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center gap-2">
                   <Sparkles className="h-5 w-5 text-primary" />
-                  AI Insights
+                  AI Performance Insights
                 </CardTitle>
                 <p className="text-sm text-muted-foreground">
-                  Ask about your performance, get improvement tips, or compare metrics
+                  Ask about your KPI performance, get improvement tips, or compare your metrics with peers
                 </p>
               </CardHeader>
-              <CardContent className="flex-1 flex flex-col">
-                <div className="flex-1 overflow-y-auto space-y-3 mb-4 max-h-[400px] min-h-[200px]">
+              <CardContent>
+                <div className="overflow-y-auto space-y-3 mb-4 max-h-[350px] min-h-[120px]">
                   {chatMessages.length === 0 && (
-                    <div className="text-center text-muted-foreground py-8 space-y-2">
+                    <div className="text-center text-muted-foreground py-6 space-y-2">
                       <Bot className="h-10 w-10 mx-auto opacity-50" />
-                      <p className="text-sm">Ask me anything about your performance!</p>
+                      <p className="text-sm">Ask me anything about your KPI performance!</p>
                       <div className="flex flex-wrap gap-2 justify-center mt-3">
                         {[
-                          "How can I improve my score?",
-                          "What are my strengths?",
-                          "Tips to reach top 3",
+                          "How can I improve my weakest KPIs?",
+                          "What are my top strengths?",
+                          "How do I compare to the top performer?",
+                          "Tips to improve my ranking",
                         ].map((suggestion) => (
                           <Button
                             key={suggestion}
                             variant="outline"
                             size="sm"
                             className="text-xs"
-                            onClick={() => {
-                              setChatInput(suggestion);
-                            }}
+                            onClick={() => setChatInput(suggestion)}
                           >
                             {suggestion}
                           </Button>
@@ -333,7 +410,7 @@ export default function EmployeeLeaderboard() {
                         </div>
                       )}
                       <div
-                        className={`rounded-lg px-3 py-2 max-w-[85%] text-sm whitespace-pre-wrap ${
+                        className={`rounded-lg px-3 py-2 max-w-[80%] text-sm whitespace-pre-wrap ${
                           msg.role === 'user'
                             ? 'bg-primary text-primary-foreground'
                             : 'bg-muted'
@@ -354,7 +431,7 @@ export default function EmployeeLeaderboard() {
                 </div>
                 <div className="flex gap-2">
                   <Textarea
-                    placeholder="Ask about your performance..."
+                    placeholder="Ask about your KPI performance..."
                     value={chatInput}
                     onChange={e => setChatInput(e.target.value)}
                     onKeyDown={e => {
@@ -376,8 +453,8 @@ export default function EmployeeLeaderboard() {
                 </div>
               </CardContent>
             </Card>
-          </div>
-        </div>
+          </>
+        )}
       </div>
     </RoleGuard>
   );

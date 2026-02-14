@@ -7713,7 +7713,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const allKpis = kpiIds.length > 0 ? await db.select().from(kpis).where(inArray(kpis.id, kpiIds)) : [];
       const kpiMap = new Map(allKpis.map(k => [k.id, k]));
 
+      const targetIds = [...new Set(allTargets.map(t => t.id))];
+      const allTargetHistory = targetIds.length > 0
+        ? await db.select().from(kpiTargetHistory).where(inArray(kpiTargetHistory.kpiTargetId, targetIds))
+        : [];
+
+      const targetHistoryMap = new Map<string, typeof allTargetHistory>();
+      for (const h of allTargetHistory) {
+        const key = h.kpiTargetId;
+        if (!targetHistoryMap.has(key)) targetHistoryMap.set(key, []);
+        targetHistoryMap.get(key)!.push(h);
+      }
+
+      const getTargetForPeriod = (kpiTargetId: string, periodStartDate: Date): string | null => {
+        const history = targetHistoryMap.get(kpiTargetId);
+        if (!history || history.length === 0) return null;
+        const eligible = history
+          .filter(h => new Date(h.effectiveFrom) <= periodStartDate)
+          .sort((a, b) => new Date(b.effectiveFrom).getTime() - new Date(a.effectiveFrom).getTime());
+        return eligible.length > 0 ? eligible[0].targetValue : null;
+      };
+
       const employeeScores = new Map<string, { totalWeightageAchieved: number; totalWeightage: number; kpiCount: number }>();
+      const employeeKpiDetails = new Map<string, Map<string, { kpiName: string; target: number; actual: number; achievement: number }>>();
 
       for (const review of dateFilteredReviews) {
         const kpi = kpiMap.get(review.kpiId);
@@ -7723,8 +7745,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const weightage = kpi.weightageContribution || 0;
         const defaultTargetNum = target ? (parseFloat(target.targetValue) || 0) : 0;
 
-        const periodTarget = target ? await storage.getKpiTargetHistoryForPeriod(target.id, new Date(review.periodStartDate)) : null;
-        const targetNum = periodTarget ? (parseFloat(periodTarget.targetValue) || 0) : defaultTargetNum;
+        const periodTargetValue = target ? getTargetForPeriod(target.id, new Date(review.periodStartDate)) : null;
+        const targetNum = periodTargetValue ? (parseFloat(periodTargetValue) || 0) : defaultTargetNum;
         const actualNum = parseFloat(review.selfRating || '0') || 0;
 
         const weightageAchieved = targetNum > 0
@@ -7737,6 +7759,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
         existing.totalWeightage += weightage;
         existing.kpiCount += 1;
         employeeScores.set(empId, existing);
+
+        if (!employeeKpiDetails.has(empId)) {
+          employeeKpiDetails.set(empId, new Map());
+        }
+        const kpiDetails = employeeKpiDetails.get(empId)!;
+        const kpiKey = kpi.id;
+        const existingKpi = kpiDetails.get(kpiKey);
+        if (existingKpi) {
+          existingKpi.actual += actualNum;
+          existingKpi.target += targetNum;
+          existingKpi.achievement = existingKpi.target > 0
+            ? Math.round((existingKpi.actual / existingKpi.target) * 100)
+            : 0;
+        } else {
+          kpiDetails.set(kpiKey, {
+            kpiName: kpi.name,
+            target: targetNum,
+            actual: actualNum,
+            achievement: targetNum > 0 ? Math.round((actualNum / targetNum) * 100) : 0,
+          });
+        }
       }
 
       const leaderboardRaw: any[] = [];
@@ -7748,6 +7791,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ? Math.round((scores.totalWeightageAchieved / scores.totalWeightage) * 100)
           : 0;
 
+        const kpiBreakdown = employeeKpiDetails.get(eId);
+        const kpiList = kpiBreakdown
+          ? Array.from(kpiBreakdown.values()).sort((a, b) => b.achievement - a.achievement)
+          : [];
+
         leaderboardRaw.push({
           employeeId: eId,
           name: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
@@ -7757,6 +7805,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           kpiCount: scores.kpiCount,
           totalWeightageAchieved: Math.round(scores.totalWeightageAchieved),
           totalWeightage: scores.totalWeightage,
+          kpis: kpiList,
         });
       }
 
