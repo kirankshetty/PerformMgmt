@@ -6341,6 +6341,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const savedTargets = [];
+      const now = new Date();
       for (const target of targets) {
         if (!target.kpiId || !target.kraId || !target.targetValue) {
           continue;
@@ -6353,6 +6354,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
           thresholdValue: target.thresholdValue || null,
           setByManagerId: managerId,
         });
+        const latestHistory = await storage.getKpiTargetHistoryForPeriod(saved.id, new Date('9999-12-31'));
+        const valueChanged = !latestHistory ||
+          latestHistory.targetValue !== target.targetValue ||
+          (latestHistory.thresholdValue || null) !== (target.thresholdValue || null);
+        if (valueChanged) {
+          await storage.createKpiTargetHistory(
+            saved.id,
+            target.targetValue,
+            target.thresholdValue || null,
+            now
+          );
+        }
         savedTargets.push(saved);
       }
 
@@ -6654,6 +6667,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             continue;
           }
 
+          const historicalTarget = await storage.getKpiTargetHistoryForPeriod(target.id, periodStart);
+          const effectiveTargetValue = historicalTarget?.targetValue || target.targetValue;
+          const effectiveThresholdValue = historicalTarget?.thresholdValue ?? target.thresholdValue;
+
           goals.push({
             id: existingReview?.id || null,
             kpiTargetId: target.id,
@@ -6665,8 +6682,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             kpiName: kpi?.name || '',
             kpiInputType: kpi?.inputType || 'number',
             reviewFrequency: freqCode,
-            targetValue: target.targetValue,
-            thresholdValue: target.thresholdValue,
+            targetValue: effectiveTargetValue,
+            thresholdValue: effectiveThresholdValue,
             periodKey: period.periodKey,
             periodName: period.displayName,
             periodStart: period.startDate.toISOString(),
@@ -6831,13 +6848,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         employeeKraWeightsMap.set(empId, weights);
       }
 
-      const enrichedReviews = reviews.map(r => {
+      const enrichedReviews = await Promise.all(reviews.map(async (r) => {
         const employee = userMap.get(r.employeeId);
         const kpi = kpiMap.get(r.kpiId);
         const kra = kraMap.get(r.kraId);
         const kpiTarget = kpiTargetMap.get(r.kpiTargetId);
         const reviewFreq = kra?.reviewFrequencyId ? rfMap.get(kra.reviewFrequencyId) : null;
         const empWeights = employeeKraWeightsMap.get(r.employeeId) || {};
+
+        let effectiveTargetValue = kpiTarget?.targetValue || '';
+        let effectiveThresholdValue = kpiTarget?.thresholdValue || '';
+        if (kpiTarget && r.periodStartDate) {
+          const periodStartDate = new Date(r.periodStartDate);
+          const historicalTarget = await storage.getKpiTargetHistoryForPeriod(kpiTarget.id, periodStartDate);
+          if (historicalTarget) {
+            effectiveTargetValue = historicalTarget.targetValue;
+            effectiveThresholdValue = historicalTarget.thresholdValue || '';
+          }
+        }
+
         return {
           ...r,
           employeeName: employee ? `${employee.firstName || ''} ${employee.lastName || ''}`.trim() : 'Unknown',
@@ -6853,10 +6882,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           kraName: kra?.displayName || '',
           kraWeightage: r.kraId ? (empWeights[r.kraId] || 0) : 0,
           reviewFrequency: reviewFreq?.description || reviewFreq?.code || '',
-          targetValue: kpiTarget?.targetValue || '',
-          thresholdValue: kpiTarget?.thresholdValue || '',
+          targetValue: effectiveTargetValue,
+          thresholdValue: effectiveThresholdValue,
         };
-      });
+      }));
 
       res.json(enrichedReviews);
     } catch (error: any) {

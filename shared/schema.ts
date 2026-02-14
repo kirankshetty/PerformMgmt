@@ -1371,6 +1371,27 @@ export const insertKpiTargetSchema = createInsertSchema(kpiTargets).omit({
 export type KpiTarget = typeof kpiTargets.$inferSelect;
 export type InsertKpiTarget = z.infer<typeof insertKpiTargetSchema>;
 
+export const kpiTargetHistory = pgTable("kpi_target_history", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  kpiTargetId: varchar("kpi_target_id").notNull(),
+  targetValue: varchar("target_value").notNull(),
+  thresholdValue: varchar("threshold_value"),
+  effectiveFrom: timestamp("effective_from").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("kpi_target_history_kpi_target_id_idx").on(table.kpiTargetId),
+  index("kpi_target_history_effective_from_idx").on(table.effectiveFrom),
+]);
+
+export const kpiTargetHistoryRelations = relations(kpiTargetHistory, ({ one }) => ({
+  kpiTarget: one(kpiTargets, {
+    fields: [kpiTargetHistory.kpiTargetId],
+    references: [kpiTargets.id],
+  }),
+}));
+
+export type KpiTargetHistory = typeof kpiTargetHistory.$inferSelect;
+
 export const kraGoalReviewStatusEnum = pgEnum('kra_goal_review_status', ['draft', 'submitted', 'approved', 'rejected']);
 
 export const kraGoalReviews = pgTable("kra_goal_reviews", {

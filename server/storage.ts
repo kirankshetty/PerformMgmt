@@ -34,6 +34,7 @@ import {
   developmentGoals,
   feedbackRequests,
   kpiTargets,
+  kpiTargetHistory,
   type User,
   type SafeUser,
   type UpsertUser,
@@ -109,7 +110,7 @@ import {
   type InsertKraGoalReview,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, asc, like, inArray, or, sql, isNotNull } from "drizzle-orm";
+import { eq, and, desc, asc, like, inArray, or, sql, isNotNull, lte } from "drizzle-orm";
 import bcrypt from "bcrypt";
 
 // Helper function to sanitize user objects by removing passwordHash
@@ -349,6 +350,8 @@ export interface IStorage {
   upsertKpiTarget(target: InsertKpiTarget): Promise<KpiTarget>;
   deleteKpiTarget(id: string): Promise<void>;
   deleteKpiTargetsByEmployee(employeeId: string, managerId: string): Promise<void>;
+  createKpiTargetHistory(kpiTargetId: string, targetValue: string, thresholdValue: string | null, effectiveFrom: Date): Promise<void>;
+  getKpiTargetHistoryForPeriod(kpiTargetId: string, periodStartDate: Date): Promise<{ targetValue: string; thresholdValue: string | null } | null>;
 
   getKraGoalReviewsByEmployee(employeeId: string): Promise<KraGoalReview[]>;
   getKraGoalReview(id: string, employeeId: string): Promise<KraGoalReview | undefined>;
@@ -3232,6 +3235,34 @@ export class DatabaseStorage implements IStorage {
         eq(kpiTargets.setByManagerId, managerId)
       )
     );
+  }
+
+  async createKpiTargetHistory(kpiTargetId: string, targetValue: string, thresholdValue: string | null, effectiveFrom: Date): Promise<void> {
+    await db.insert(kpiTargetHistory).values({
+      kpiTargetId,
+      targetValue,
+      thresholdValue,
+      effectiveFrom,
+    });
+  }
+
+  async getKpiTargetHistoryForPeriod(kpiTargetId: string, periodStartDate: Date): Promise<{ targetValue: string; thresholdValue: string | null } | null> {
+    const results = await db
+      .select({
+        targetValue: kpiTargetHistory.targetValue,
+        thresholdValue: kpiTargetHistory.thresholdValue,
+      })
+      .from(kpiTargetHistory)
+      .where(
+        and(
+          eq(kpiTargetHistory.kpiTargetId, kpiTargetId),
+          lte(kpiTargetHistory.effectiveFrom, periodStartDate)
+        )
+      )
+      .orderBy(desc(kpiTargetHistory.effectiveFrom))
+      .limit(1);
+
+    return results.length > 0 ? results[0] : null;
   }
 
   async getKraGoalReviewsByEmployee(employeeId: string): Promise<KraGoalReview[]> {
