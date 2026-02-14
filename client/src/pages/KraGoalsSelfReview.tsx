@@ -355,8 +355,8 @@ export default function KraGoalsSelfReview() {
                               </TableRow>
                               <TableRow key={`${goal.kpiId}_${goal.periodKey}_remarks`}>
                                 <TableCell colSpan={8} className="pt-0 pb-1">
-                                  <div className="flex items-center gap-3">
-                                    <span className="text-sm font-medium text-muted-foreground whitespace-nowrap">Remarks for Actual Value:</span>
+                                  <div className="flex items-start gap-3">
+                                    <span className="text-sm font-medium text-muted-foreground whitespace-nowrap w-48 shrink-0 mt-2">Remarks for Actual Value:</span>
                                     {isEditable ? (
                                       <Textarea
                                         placeholder="Enter remarks for actual value..."
@@ -365,15 +365,15 @@ export default function KraGoalsSelfReview() {
                                         className="flex-1 min-h-[60px] text-sm"
                                       />
                                     ) : (
-                                      <span className="text-sm">{goal.selfComments || '-'}</span>
+                                      <span className="text-sm mt-2">{goal.selfComments || '-'}</span>
                                     )}
                                   </div>
                                 </TableCell>
                               </TableRow>
                               <TableRow key={`${goal.kpiId}_${goal.periodKey}_pipeline_remarks`} className="border-b">
                                 <TableCell colSpan={8} className="pt-0 pb-3">
-                                  <div className="flex items-center gap-3">
-                                    <span className="text-sm font-medium text-muted-foreground whitespace-nowrap">Remarks for Pipeline Value:</span>
+                                  <div className="flex items-start gap-3">
+                                    <span className="text-sm font-medium text-muted-foreground whitespace-nowrap w-48 shrink-0 mt-2">Remarks for Pipeline Value:</span>
                                     {isEditable ? (
                                       <Textarea
                                         placeholder="Enter remarks for pipeline value..."
@@ -382,7 +382,7 @@ export default function KraGoalsSelfReview() {
                                         className="flex-1 min-h-[60px] text-sm"
                                       />
                                     ) : (
-                                      <span className="text-sm">{goal.pipelineRemarks || '-'}</span>
+                                      <span className="text-sm mt-2">{goal.pipelineRemarks || '-'}</span>
                                     )}
                                   </div>
                                 </TableCell>
