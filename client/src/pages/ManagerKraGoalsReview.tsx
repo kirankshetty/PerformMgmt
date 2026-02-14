@@ -236,8 +236,8 @@ export default function ManagerKraGoalsReview() {
                       {review.selfComments && (
                         <TableRow>
                           <TableCell colSpan={colSpan} className="pt-0 pb-1">
-                            <div className="flex items-start gap-3">
-                              <span className="text-sm font-medium text-muted-foreground whitespace-nowrap w-48 shrink-0 mt-1">Employee Remarks (Actual):</span>
+                            <div className="flex items-baseline gap-3">
+                              <span className="text-sm font-medium text-muted-foreground whitespace-nowrap w-48 shrink-0">Employee Remarks (Actual):</span>
                               <span className="text-sm">{review.selfComments}</span>
                             </div>
                           </TableCell>
@@ -246,8 +246,8 @@ export default function ManagerKraGoalsReview() {
                       {review.pipelineRemarks && (
                         <TableRow>
                           <TableCell colSpan={colSpan} className="pt-0 pb-1">
-                            <div className="flex items-start gap-3">
-                              <span className="text-sm font-medium text-muted-foreground whitespace-nowrap w-48 shrink-0 mt-1">Employee Remarks (Pipeline):</span>
+                            <div className="flex items-baseline gap-3">
+                              <span className="text-sm font-medium text-muted-foreground whitespace-nowrap w-48 shrink-0">Employee Remarks (Pipeline):</span>
                               <span className="text-sm">{review.pipelineRemarks}</span>
                             </div>
                           </TableCell>
@@ -255,8 +255,8 @@ export default function ManagerKraGoalsReview() {
                       )}
                       <TableRow>
                         <TableCell colSpan={colSpan} className="pt-0 pb-1">
-                          <div className="flex items-start gap-3">
-                            <span className="text-sm font-medium text-muted-foreground whitespace-nowrap w-48 shrink-0 mt-2">Manager Remarks (Actual):</span>
+                          <div className={`flex gap-3 ${showActions ? 'items-start' : 'items-baseline'}`}>
+                            <span className={`text-sm font-medium text-muted-foreground whitespace-nowrap w-48 shrink-0 ${showActions ? 'mt-2' : ''}`}>Manager Remarks (Actual):</span>
                             {showActions ? (
                               <Textarea
                                 placeholder="Enter your remarks for actual value..."
@@ -265,15 +265,15 @@ export default function ManagerKraGoalsReview() {
                                 className="flex-1 min-h-[60px] text-sm"
                               />
                             ) : (
-                              <span className="text-sm mt-2">{review.managerRemarksActual || '-'}</span>
+                              <span className="text-sm">{review.managerRemarksActual || '-'}</span>
                             )}
                           </div>
                         </TableCell>
                       </TableRow>
                       <TableRow className={review.managerComments && !showActions ? "" : "border-b"}>
                         <TableCell colSpan={colSpan} className="pt-0 pb-3">
-                          <div className="flex items-start gap-3">
-                            <span className="text-sm font-medium text-muted-foreground whitespace-nowrap w-48 shrink-0 mt-2">Manager Remarks (Pipeline):</span>
+                          <div className={`flex gap-3 ${showActions ? 'items-start' : 'items-baseline'}`}>
+                            <span className={`text-sm font-medium text-muted-foreground whitespace-nowrap w-48 shrink-0 ${showActions ? 'mt-2' : ''}`}>Manager Remarks (Pipeline):</span>
                             {showActions ? (
                               <Textarea
                                 placeholder="Enter your remarks for pipeline value..."
@@ -282,7 +282,7 @@ export default function ManagerKraGoalsReview() {
                                 className="flex-1 min-h-[60px] text-sm"
                               />
                             ) : (
-                              <span className="text-sm mt-2">{review.managerRemarksPipeline || '-'}</span>
+                              <span className="text-sm">{review.managerRemarksPipeline || '-'}</span>
                             )}
                           </div>
                         </TableCell>
