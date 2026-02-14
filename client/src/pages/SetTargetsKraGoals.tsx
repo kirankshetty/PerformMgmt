@@ -572,7 +572,7 @@ export default function SetTargetsKraGoals() {
       </Card>
 
       <Dialog open={isTargetDialogOpen} onOpenChange={(open) => { if (!open) handleCloseTargetDialog(); }}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Target className="h-5 w-5" />
@@ -654,7 +654,7 @@ export default function SetTargetsKraGoals() {
                                           [kpi.id]: { ...prev[kpi.id], targetValue: e.target.value },
                                         }))
                                       }
-                                      className="w-28"
+                                      className="w-24"
                                     />
                                   </TableCell>
                                   <TableCell>
@@ -667,7 +667,7 @@ export default function SetTargetsKraGoals() {
                                           [kpi.id]: { ...prev[kpi.id], thresholdValue: e.target.value },
                                         }))
                                       }
-                                      className="w-28"
+                                      className="w-24"
                                     />
                                   </TableCell>
                                   <TableCell>
