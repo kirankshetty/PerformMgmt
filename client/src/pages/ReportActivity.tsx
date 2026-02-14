@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { format } from "date-fns";
 import { Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -11,20 +10,23 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RoleGuard } from "@/components/RoleGuard";
 
-const activityBadgeColors: Record<string, string> = {
-  self_evaluation_submitted: "bg-blue-100 text-blue-800",
-  manager_evaluation_submitted: "bg-green-100 text-green-800",
-  meeting_scheduled: "bg-yellow-100 text-yellow-800",
-  meeting_completed: "bg-purple-100 text-purple-800",
-  evaluation_finalized: "bg-emerald-100 text-emerald-800",
-  kra_self_review_submitted: "bg-indigo-100 text-indigo-800",
-  kra_review_approved: "bg-green-100 text-green-800",
-  kra_review_rejected: "bg-red-100 text-red-800",
-};
-
-const formatActivityType = (type: string) => {
-  return type.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-};
+interface ActivityRow {
+  employeeId: string;
+  name: string;
+  employeeCode: string;
+  kpi: string;
+  kpiCode: string;
+  frequency: string;
+  period: string;
+  periodStart: string;
+  periodEnd: string;
+  status: string;
+  weightage: number;
+  target: number;
+  actual: number;
+  pipeline: number;
+  weightageAchieved: number;
+}
 
 export default function ReportActivity() {
   const [fromDate, setFromDate] = useState(() => {
@@ -108,19 +110,14 @@ export default function ReportActivity() {
     setAppliedParams(params.toString());
   };
 
-  const { data, isLoading } = useQuery<any[]>({
+  const { data, isLoading } = useQuery<ActivityRow[]>({
     queryKey: ['/api/reports/activity', appliedParams],
     queryFn: () => fetch(`/api/reports/activity?${appliedParams}`).then(r => r.json()),
     enabled: !!fromDate && !!toDate,
   });
 
-  const formatDate = (date: string | null) => {
-    if (!date) return '-';
-    try {
-      return format(new Date(date), 'MMM dd, yyyy');
-    } catch {
-      return '-';
-    }
+  const formatNumber = (val: number) => {
+    return val.toLocaleString();
   };
 
   return (
@@ -128,7 +125,7 @@ export default function ReportActivity() {
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-semibold">Activity Report</h1>
-          <p className="text-muted-foreground">Track activity timeline for your team members</p>
+          <p className="text-muted-foreground">KPI activity details for your team members</p>
         </div>
 
         <Card>
@@ -237,7 +234,7 @@ export default function ReportActivity() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Activity Timeline</CardTitle>
+            <CardTitle>Activity Details</CardTitle>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -253,25 +250,40 @@ export default function ReportActivity() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Employee Code</TableHead>
-                      <TableHead>Employee Name</TableHead>
-                      <TableHead>Activity Type</TableHead>
-                      <TableHead>Details</TableHead>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Kpi</TableHead>
+                      <TableHead>Frequency</TableHead>
+                      <TableHead>Period</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Weightage</TableHead>
+                      <TableHead className="text-right">Target</TableHead>
+                      <TableHead className="text-right">Actual</TableHead>
+                      <TableHead className="text-right">Pipeline</TableHead>
+                      <TableHead className="text-right">Weightage Achieved</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {data.map((row: any, index: number) => (
-                      <TableRow key={row.id || index}>
-                        <TableCell>{formatDate(row.activityDate)}</TableCell>
-                        <TableCell className="font-medium">{row.employeeCode || '-'}</TableCell>
-                        <TableCell>{row.employeeName || '-'}</TableCell>
+                    {data.map((row, index) => (
+                      <TableRow key={index}>
+                        <TableCell className="font-medium whitespace-nowrap">{row.name}</TableCell>
+                        <TableCell className="max-w-[180px] truncate" title={row.kpi}>{row.kpi}</TableCell>
+                        <TableCell>{row.frequency}</TableCell>
+                        <TableCell className="whitespace-nowrap">{row.period}</TableCell>
                         <TableCell>
-                          <Badge className={activityBadgeColors[row.activityType] || "bg-gray-100 text-gray-800"} variant="outline">
-                            {formatActivityType(row.activityType || '')}
+                          <Badge
+                            variant="outline"
+                            className={row.status === 'approved'
+                              ? 'bg-green-100 text-green-800 border-green-200'
+                              : 'bg-blue-100 text-blue-800 border-blue-200'}
+                          >
+                            {row.status.charAt(0).toUpperCase() + row.status.slice(1)}
                           </Badge>
                         </TableCell>
-                        <TableCell>{row.details || '-'}</TableCell>
+                        <TableCell className="text-right">{row.weightage}</TableCell>
+                        <TableCell className="text-right">{formatNumber(row.target)}</TableCell>
+                        <TableCell className="text-right">{formatNumber(row.actual)}</TableCell>
+                        <TableCell className="text-right">{formatNumber(row.pipeline)}</TableCell>
+                        <TableCell className="text-right font-medium">{row.weightageAchieved}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>

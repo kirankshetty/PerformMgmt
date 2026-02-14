@@ -7263,77 +7263,95 @@ export async function registerRoutes(app: Express): Promise<Server> {
         members = members.filter(u => empIds.includes(u.id));
       }
 
-      const memberIds = new Set(members.map(m => m.id));
-      const allEvaluations = await storage.getEvaluations();
-      const filteredEvaluations = allEvaluations.filter(e =>
-        memberIds.has(e.employeeId) &&
-        e.createdAt && new Date(e.createdAt) >= from &&
-        e.createdAt && new Date(e.createdAt) <= to
-      );
-
-      const locationCache = new Map<string, string>();
-      const activities: any[] = [];
-
-      const isInRange = (d: any) => {
-        if (!d) return false;
-        const dt = new Date(d);
-        return dt >= from && dt <= to;
-      };
-
-      for (const emp of members) {
-        let locationName = '';
-        if (emp.locationId) {
-          if (!locationCache.has(emp.locationId)) {
-            const loc = await storage.getLocation(emp.locationId);
-            locationCache.set(emp.locationId, loc?.name || '');
-          }
-          locationName = locationCache.get(emp.locationId) || '';
-        }
-
-        const empInfo = {
-          employeeId: emp.id,
-          employeeName: `${emp.firstName || ''} ${emp.lastName || ''}`.trim(),
-          employeeCode: emp.code || '',
-          department: emp.department || '',
-          location: locationName,
-        };
-
-        const empEvals = filteredEvaluations.filter(e => e.employeeId === emp.id);
-        for (const ev of empEvals) {
-          if (isInRange(ev.selfEvaluationSubmittedAt)) {
-            activities.push({ ...empInfo, activityType: 'self_evaluation_submitted', activityDate: new Date(ev.selfEvaluationSubmittedAt!).toISOString(), details: 'Self evaluation submitted' });
-          }
-          if (isInRange(ev.managerEvaluationSubmittedAt)) {
-            activities.push({ ...empInfo, activityType: 'manager_evaluation_submitted', activityDate: new Date(ev.managerEvaluationSubmittedAt!).toISOString(), details: 'Manager evaluation submitted' });
-          }
-          if (isInRange(ev.meetingScheduledAt)) {
-            activities.push({ ...empInfo, activityType: 'meeting_scheduled', activityDate: new Date(ev.meetingScheduledAt!).toISOString(), details: 'Meeting scheduled' });
-          }
-          if (isInRange(ev.meetingCompletedAt)) {
-            activities.push({ ...empInfo, activityType: 'meeting_completed', activityDate: new Date(ev.meetingCompletedAt!).toISOString(), details: 'Meeting completed' });
-          }
-          if (isInRange(ev.finalizedAt)) {
-            activities.push({ ...empInfo, activityType: 'evaluation_finalized', activityDate: new Date(ev.finalizedAt!).toISOString(), details: 'Evaluation finalized' });
-          }
-        }
-
-        const kraReviews = await storage.getKraGoalReviewsByEmployee(emp.id);
-        for (const review of kraReviews) {
-          if (isInRange(review.submittedAt)) {
-            activities.push({ ...empInfo, activityType: 'kra_self_review_submitted', activityDate: new Date(review.submittedAt!).toISOString(), details: 'KRA self review submitted' });
-          }
-          if (isInRange(review.reviewedAt) && review.status === 'approved') {
-            activities.push({ ...empInfo, activityType: 'kra_review_approved', activityDate: new Date(review.reviewedAt!).toISOString(), details: 'KRA review approved' });
-          }
-          if (isInRange(review.reviewedAt) && review.status === 'rejected') {
-            activities.push({ ...empInfo, activityType: 'kra_review_rejected', activityDate: new Date(review.reviewedAt!).toISOString(), details: 'KRA review rejected' });
-          }
-        }
+      const memberIds = members.map(m => m.id);
+      if (memberIds.length === 0) {
+        return res.json([]);
       }
 
-      activities.sort((a, b) => new Date(b.activityDate).getTime() - new Date(a.activityDate).getTime());
+      const managerUser = allUsers.find(u => u.id === managerId);
+      const companyId = managerUser?.companyId;
+      if (!companyId) {
+        return res.json([]);
+      }
 
-      res.json(activities);
+      const allKras = await storage.getKrasByCompany(companyId);
+      const allKpis = await storage.getKpisByCompany(companyId);
+      const allFreqs = await storage.getFrequencyCalendarsByCompany(companyId);
+      const allTargets = await db.select().from(kpiTargets).where(
+        inArray(kpiTargets.employeeId, memberIds)
+      );
+
+      const kpiMap = new Map(allKpis.map(k => [k.id, k]));
+      const kraMap = new Map(allKras.map(k => [k.id, k]));
+      const freqMap = new Map(allFreqs.map(f => [f.id, f]));
+
+      const allReviews = await db.select().from(kraGoalReviews).where(
+        and(
+          inArray(kraGoalReviews.employeeId, memberIds),
+          inArray(kraGoalReviews.status, ['submitted', 'approved'])
+        )
+      );
+
+      const dateFilteredReviews = allReviews.filter(r => {
+        const pStart = new Date(r.periodStartDate);
+        const pEnd = new Date(r.periodEndDate);
+        return pEnd >= from && pStart <= to;
+      });
+
+      const rows: any[] = [];
+
+      for (const review of dateFilteredReviews) {
+        const emp = members.find(m => m.id === review.employeeId);
+        if (!emp) continue;
+
+        const kpi = kpiMap.get(review.kpiId);
+        const target = allTargets.find(t => t.id === review.kpiTargetId);
+        const kra = target ? kraMap.get(target.kraId) : null;
+        if (!kpi) continue;
+
+        const freq = kra?.reviewFrequencyId ? freqMap.get(kra.reviewFrequencyId) : null;
+        const weightage = kpi.weightageContribution || 0;
+
+        const defaultTargetNum = target ? (parseFloat(target.targetValue) || 0) : 0;
+        const periodTarget = target ? await storage.getKpiTargetHistoryForPeriod(target.id, new Date(review.periodStartDate)) : null;
+        const targetNum = periodTarget ? (parseFloat(periodTarget.targetValue) || 0) : defaultTargetNum;
+        const actualNum = parseFloat(review.selfRating || '0') || 0;
+        const pipelineNum = parseFloat(review.pipelineValue || '0') || 0;
+
+        const weightageAchieved = targetNum > 0
+          ? Math.round((actualNum / targetNum) * weightage)
+          : 0;
+
+        const pStartDate = new Date(review.periodStartDate);
+        const pEndDate = new Date(review.periodEndDate);
+        const periodStr = `${String(pStartDate.getDate()).padStart(2, '0')}/${String(pStartDate.getMonth() + 1).padStart(2, '0')}/${pStartDate.getFullYear()} - ${String(pEndDate.getDate()).padStart(2, '0')}/${String(pEndDate.getMonth() + 1).padStart(2, '0')}/${pEndDate.getFullYear()}`;
+
+        rows.push({
+          employeeId: emp.id,
+          name: `${emp.firstName || ''} ${emp.lastName || ''}`.trim(),
+          employeeCode: emp.code || '',
+          kpi: kpi.name,
+          kpiCode: kpi.code,
+          frequency: freq?.code || '-',
+          period: periodStr,
+          periodStart: pStartDate.toISOString(),
+          periodEnd: pEndDate.toISOString(),
+          status: review.status,
+          weightage,
+          target: targetNum,
+          actual: actualNum,
+          pipeline: pipelineNum,
+          weightageAchieved,
+        });
+      }
+
+      rows.sort((a, b) => {
+        const nameCompare = a.name.localeCompare(b.name);
+        if (nameCompare !== 0) return nameCompare;
+        return new Date(a.periodStart).getTime() - new Date(b.periodStart).getTime();
+      });
+
+      res.json(rows);
     } catch (error: any) {
       console.error("Error generating activity report:", error);
       res.status(500).json({ message: "Failed to generate report" });
