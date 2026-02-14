@@ -1383,6 +1383,7 @@ export const kraGoalReviews = pgTable("kra_goal_reviews", {
   periodStartDate: timestamp("period_start_date").notNull(),
   periodEndDate: timestamp("period_end_date").notNull(),
   selfRating: varchar("self_rating"),
+  pipelineValue: varchar("pipeline_value"),
   selfComments: text("self_comments"),
   status: kraGoalReviewStatusEnum("status").default('draft').notNull(),
   submittedAt: timestamp("submitted_at"),

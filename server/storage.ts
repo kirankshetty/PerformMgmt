@@ -3232,6 +3232,7 @@ export class DatabaseStorage implements IStorage {
   async upsertKraGoalReview(review: InsertKraGoalReview): Promise<KraGoalReview> {
     const updateSet: any = {
       selfRating: review.selfRating,
+      pipelineValue: review.pipelineValue,
       selfComments: review.selfComments,
       status: review.status,
       updatedAt: new Date(),

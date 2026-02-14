@@ -6669,6 +6669,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             periodStart: period.startDate.toISOString(),
             periodEnd: period.endDate.toISOString(),
             selfRating: existingReview?.selfRating || '',
+            pipelineValue: existingReview?.pipelineValue || '',
             selfComments: existingReview?.selfComments || '',
             status: reviewStatus,
             category,
@@ -6717,6 +6718,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           periodStartDate: new Date(review.periodStart),
           periodEndDate: new Date(review.periodEnd),
           selfRating: review.selfRating || null,
+          pipelineValue: review.pipelineValue || null,
           selfComments: review.selfComments || null,
           status: 'draft',
         });
@@ -6753,6 +6755,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           periodStartDate: new Date(review.periodStart),
           periodEndDate: new Date(review.periodEnd),
           selfRating: review.selfRating || null,
+          pipelineValue: review.pipelineValue || null,
           selfComments: review.selfComments || null,
           status: 'submitted',
         });
