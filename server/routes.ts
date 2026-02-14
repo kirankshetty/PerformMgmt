@@ -6470,7 +6470,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const kra = kraMap[target.kraId];
         if (!kra) continue;
 
-        const relevantDetails = allDetails.filter(d => d.reviewFrequencyId === kra.reviewFrequencyId);
+        const relevantDetails = allDetails;
 
         for (const detail of relevantDetails) {
           const endDate = new Date(detail.endDate);
