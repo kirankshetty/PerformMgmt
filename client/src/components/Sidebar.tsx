@@ -34,6 +34,7 @@ import {
   TrendingUp,
   ChevronDown,
   ChevronRight,
+  Trophy,
 } from "lucide-react";
 import type { Company } from "@shared/schema";
 
@@ -84,6 +85,8 @@ const reportItems: NavItem[] = [
   { href: "/report-score-card", label: "Score Card", icon: FileBarChart, roles: ["manager"] },
   { href: "/report-activity", label: "Activity Report", icon: Activity, roles: ["manager"] },
   { href: "/report-trend", label: "Trend Report", icon: TrendingUp, roles: ["manager"] },
+  { href: "/employee-activity-report", label: "Activity Report", icon: Activity, roles: ["employee"] },
+  { href: "/employee-leaderboard", label: "Leaderboard", icon: Trophy, roles: ["employee"] },
 ];
 
 export function Sidebar() {

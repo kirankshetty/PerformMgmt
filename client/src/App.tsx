@@ -47,6 +47,8 @@ import Settings from "@/pages/Settings";
 import ReportScoreCard from "@/pages/ReportScoreCard";
 import ReportActivity from "@/pages/ReportActivity";
 import ReportTrend from "@/pages/ReportTrend";
+import EmployeeReportActivity from "@/pages/EmployeeReportActivity";
+import EmployeeLeaderboard from "@/pages/EmployeeLeaderboard";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -104,6 +106,8 @@ function Router() {
           <Route path="/report-score-card" component={ReportScoreCard} />
           <Route path="/report-activity" component={ReportActivity} />
           <Route path="/report-trend" component={ReportTrend} />
+          <Route path="/employee-activity-report" component={EmployeeReportActivity} />
+          <Route path="/employee-leaderboard" component={EmployeeLeaderboard} />
         </>
       )}
       <Route component={NotFound} />

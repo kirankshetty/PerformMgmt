@@ -39,9 +39,10 @@ import { sendEmail, sendReviewInvitation, sendReviewReminder, sendReviewCompleti
 import { ObjectStorageService, parseObjectPath, signObjectURL } from "./objectStorage";
 import { seedTestUsers, testUsers } from "./seedUsers";
 import { db } from "./db";
-import { levels as levelsTable, grades as gradesTable, businessRoles as businessRolesTable, kpiTargets, kpis, kras, kraGoalReviews, reviewFrequencies } from "@shared/schema";
-import { eq, and, inArray, lte } from "drizzle-orm";
+import { levels as levelsTable, grades as gradesTable, businessRoles as businessRolesTable, kpiTargets, kpis, kras, kraGoalReviews, reviewFrequencies, kpiTargetHistory, conversations, messages } from "@shared/schema";
+import { eq, and, inArray, lte, desc } from "drizzle-orm";
 import * as XLSX from 'xlsx';
+import OpenAI from "openai";
 import PDFDocument from 'pdfkit';
 import PizZip from 'pizzip';
 import Docxtemplater from 'docxtemplater';
@@ -7565,6 +7566,275 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("Error generating trend report:", error);
       res.status(500).json({ message: "Failed to generate report" });
+    }
+  });
+
+  // ---- Employee Activity Report ----
+  app.get('/api/employee-reports/activity', isAuthenticated, requireRoles(['employee']), async (req: any, res) => {
+    try {
+      const employeeId = req.user.claims.sub;
+      const { fromDate, toDate } = req.query;
+
+      if (!fromDate || !toDate) {
+        return res.status(400).json({ message: "fromDate and toDate are required" });
+      }
+
+      const from = new Date(fromDate as string);
+      const to = new Date(toDate as string);
+
+      const allTargets = await db.select().from(kpiTargets).where(
+        eq(kpiTargets.employeeId, employeeId)
+      );
+
+      if (allTargets.length === 0) {
+        return res.json([]);
+      }
+
+      const kpiIds = [...new Set(allTargets.map(t => t.kpiId))];
+      const kraIds = [...new Set(allTargets.map(t => t.kraId))];
+
+      const allKpis = kpiIds.length > 0 ? await db.select().from(kpis).where(inArray(kpis.id, kpiIds)) : [];
+      const allKras = kraIds.length > 0 ? await db.select().from(kras).where(inArray(kras.id, kraIds)) : [];
+
+      const kraFreqIds = [...new Set(allKras.map(k => k.reviewFrequencyId).filter(Boolean))];
+      const allFreqs = kraFreqIds.length > 0 ? await db.select().from(reviewFrequencies).where(inArray(reviewFrequencies.id, kraFreqIds as string[])) : [];
+
+      const kpiMap = new Map(allKpis.map(k => [k.id, k]));
+      const kraMap = new Map(allKras.map(k => [k.id, k]));
+      const freqMap = new Map(allFreqs.map(f => [f.id, f]));
+
+      const allReviews = await db.select().from(kraGoalReviews).where(
+        eq(kraGoalReviews.employeeId, employeeId)
+      );
+
+      const dateFilteredReviews = allReviews.filter(r => {
+        const pStart = new Date(r.periodStartDate);
+        const pEnd = new Date(r.periodEndDate);
+        return pEnd >= from && pStart <= to;
+      });
+
+      const rows: any[] = [];
+
+      for (const review of dateFilteredReviews) {
+        const kpi = kpiMap.get(review.kpiId);
+        const target = allTargets.find(t => t.id === review.kpiTargetId);
+        const kra = target ? kraMap.get(target.kraId) : null;
+        if (!kpi) continue;
+
+        const freq = kra?.reviewFrequencyId ? freqMap.get(kra.reviewFrequencyId) : null;
+        const weightage = kpi.weightageContribution || 0;
+
+        const defaultTargetNum = target ? (parseFloat(target.targetValue) || 0) : 0;
+        const periodTarget = target ? await storage.getKpiTargetHistoryForPeriod(target.id, new Date(review.periodStartDate)) : null;
+        const targetNum = periodTarget ? (parseFloat(periodTarget.targetValue) || 0) : defaultTargetNum;
+        const actualNum = parseFloat(review.selfRating || '0') || 0;
+        const pipelineNum = parseFloat(review.pipelineValue || '0') || 0;
+
+        const weightageAchieved = targetNum > 0
+          ? Math.round((actualNum / targetNum) * weightage)
+          : 0;
+
+        const pStartDate = new Date(review.periodStartDate);
+        const pEndDate = new Date(review.periodEndDate);
+        const periodStr = `${String(pStartDate.getDate()).padStart(2, '0')}/${String(pStartDate.getMonth() + 1).padStart(2, '0')}/${pStartDate.getFullYear()} - ${String(pEndDate.getDate()).padStart(2, '0')}/${String(pEndDate.getMonth() + 1).padStart(2, '0')}/${pEndDate.getFullYear()}`;
+
+        rows.push({
+          kpi: kpi.name,
+          kpiCode: kpi.code,
+          frequency: freq?.code || '-',
+          period: periodStr,
+          periodStart: pStartDate.toISOString(),
+          periodEnd: pEndDate.toISOString(),
+          status: review.status,
+          weightage,
+          target: targetNum,
+          actual: actualNum,
+          pipeline: pipelineNum,
+          weightageAchieved,
+        });
+      }
+
+      rows.sort((a, b) => {
+        return new Date(a.periodStart).getTime() - new Date(b.periodStart).getTime();
+      });
+
+      res.json(rows);
+    } catch (error: any) {
+      console.error("Error generating employee activity report:", error);
+      res.status(500).json({ message: "Failed to generate report" });
+    }
+  });
+
+  // ---- Employee Leaderboard ----
+  app.get('/api/employee-reports/leaderboard', isAuthenticated, requireRoles(['employee']), async (req: any, res) => {
+    try {
+      const employeeId = req.user.claims.sub;
+      const { fromDate, toDate } = req.query;
+
+      if (!fromDate || !toDate) {
+        return res.status(400).json({ message: "fromDate and toDate are required" });
+      }
+
+      const from = new Date(fromDate as string);
+      const to = new Date(toDate as string);
+
+      const empUser = await storage.getUser(employeeId);
+      if (!empUser?.companyId) {
+        return res.json({ myRank: null, leaderboard: [] });
+      }
+
+      const allUsers = await storage.getUsersByCompany(empUser.companyId);
+      const employeeUsers = allUsers.filter(u => (u.role === 'employee' || u.role === 'manager') && u.status !== 'inactive');
+
+      if (employeeUsers.length === 0) {
+        return res.json({ myRank: null, leaderboard: [] });
+      }
+
+      const employeeIdsList = employeeUsers.map(u => u.id);
+
+      const allTargets = await db.select().from(kpiTargets).where(
+        inArray(kpiTargets.employeeId, employeeIdsList)
+      );
+
+      const allReviews = await db.select().from(kraGoalReviews).where(
+        and(
+          inArray(kraGoalReviews.employeeId, employeeIdsList),
+          inArray(kraGoalReviews.status, ['submitted', 'approved'])
+        )
+      );
+
+      const dateFilteredReviews = allReviews.filter(r => {
+        const pStart = new Date(r.periodStartDate);
+        const pEnd = new Date(r.periodEndDate);
+        return pEnd >= from && pStart <= to;
+      });
+
+      const kpiIds = [...new Set(allTargets.map(t => t.kpiId))];
+      const allKpis = kpiIds.length > 0 ? await db.select().from(kpis).where(inArray(kpis.id, kpiIds)) : [];
+      const kpiMap = new Map(allKpis.map(k => [k.id, k]));
+
+      const employeeScores = new Map<string, { totalWeightageAchieved: number; totalWeightage: number; kpiCount: number }>();
+
+      for (const review of dateFilteredReviews) {
+        const kpi = kpiMap.get(review.kpiId);
+        if (!kpi) continue;
+
+        const target = allTargets.find(t => t.id === review.kpiTargetId);
+        const weightage = kpi.weightageContribution || 0;
+        const defaultTargetNum = target ? (parseFloat(target.targetValue) || 0) : 0;
+
+        const periodTarget = target ? await storage.getKpiTargetHistoryForPeriod(target.id, new Date(review.periodStartDate)) : null;
+        const targetNum = periodTarget ? (parseFloat(periodTarget.targetValue) || 0) : defaultTargetNum;
+        const actualNum = parseFloat(review.selfRating || '0') || 0;
+
+        const weightageAchieved = targetNum > 0
+          ? (actualNum / targetNum) * weightage
+          : 0;
+
+        const empId = review.employeeId;
+        const existing = employeeScores.get(empId) || { totalWeightageAchieved: 0, totalWeightage: 0, kpiCount: 0 };
+        existing.totalWeightageAchieved += weightageAchieved;
+        existing.totalWeightage += weightage;
+        existing.kpiCount += 1;
+        employeeScores.set(empId, existing);
+      }
+
+      const leaderboardRaw: any[] = [];
+      for (const [eId, scores] of employeeScores.entries()) {
+        const user = employeeUsers.find(u => u.id === eId);
+        if (!user) continue;
+
+        const overallScore = scores.totalWeightage > 0
+          ? Math.round((scores.totalWeightageAchieved / scores.totalWeightage) * 100)
+          : 0;
+
+        leaderboardRaw.push({
+          employeeId: eId,
+          name: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
+          employeeCode: user.code || '',
+          department: user.department || '-',
+          overallScore,
+          kpiCount: scores.kpiCount,
+          totalWeightageAchieved: Math.round(scores.totalWeightageAchieved),
+          totalWeightage: scores.totalWeightage,
+        });
+      }
+
+      leaderboardRaw.sort((a, b) => b.overallScore - a.overallScore);
+
+      let rank = 1;
+      const leaderboard = leaderboardRaw.map((entry, idx) => {
+        if (idx > 0 && entry.overallScore < leaderboardRaw[idx - 1].overallScore) {
+          rank = idx + 1;
+        }
+        return { ...entry, rank };
+      });
+
+      const myRank = leaderboard.find(e => e.employeeId === employeeId)?.rank || null;
+
+      res.json({ myRank, myEmployeeId: employeeId, leaderboard });
+    } catch (error: any) {
+      console.error("Error generating leaderboard:", error);
+      res.status(500).json({ message: "Failed to generate leaderboard" });
+    }
+  });
+
+  // ---- Employee AI Insights Chat ----
+  const openai = new OpenAI({
+    apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+    baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+  });
+
+  app.post('/api/employee-reports/ai-insights', isAuthenticated, requireRoles(['employee']), async (req: any, res) => {
+    try {
+      const employeeId = req.user.claims.sub;
+      const { message, context } = req.body;
+
+      if (!message) {
+        return res.status(400).json({ message: "message is required" });
+      }
+
+      const systemPrompt = `You are an AI performance insights assistant for an employee performance management system. 
+You help employees understand their KPI performance, provide actionable improvement suggestions, and compare their metrics.
+Always be encouraging but honest. Provide specific, data-driven insights when performance data is available.
+Keep responses concise and actionable. Use bullet points for clarity.
+
+${context ? `Current Performance Context:\n${context}` : ''}`;
+
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+
+      const stream = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: message },
+        ],
+        stream: true,
+        max_completion_tokens: 2048,
+      });
+
+      let fullResponse = "";
+
+      for await (const chunk of stream) {
+        const content = chunk.choices[0]?.delta?.content || "";
+        if (content) {
+          fullResponse += content;
+          res.write(`data: ${JSON.stringify({ content })}\n\n`);
+        }
+      }
+
+      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+      res.end();
+    } catch (error: any) {
+      console.error("Error generating AI insights:", error);
+      if (res.headersSent) {
+        res.write(`data: ${JSON.stringify({ error: "Failed to generate insights" })}\n\n`);
+        res.end();
+      } else {
+        res.status(500).json({ message: "Failed to generate AI insights" });
+      }
     }
   });
 
