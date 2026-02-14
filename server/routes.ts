@@ -7683,7 +7683,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json({ myRank: null, leaderboard: [] });
       }
 
-      const allUsers = await storage.getUsersByCompany(empUser.companyId);
+      const allUsers = await storage.getUsers({ companyId: empUser.companyId });
       const employeeUsers = allUsers.filter(u => (u.role === 'employee' || u.role === 'manager') && u.status !== 'inactive');
 
       if (employeeUsers.length === 0) {
