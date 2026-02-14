@@ -477,7 +477,7 @@ export default function ManagerKraGoalsReview() {
             <Card>
               <CardHeader>
                 <CardTitle>
-                  {statusFilter === 'submitted' ? 'Pending KPIs' : statusFilter === 'approved' ? 'Approved KPIs' : statusFilter === 'rejected' ? 'Rejected KPIs' : 'Submitted KPIs'}
+                  {statusFilter === 'approved' ? 'Approved KPIs' : statusFilter === 'rejected' ? 'Rejected KPIs' : 'Pending KPIs'}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -514,7 +514,7 @@ export default function ManagerKraGoalsReview() {
             <Card key={group.info.id}>
               <CardHeader>
                 <CardTitle className="text-lg">
-                  {statusFilter === 'submitted' ? 'Pending KPIs' : statusFilter === 'approved' ? 'Approved KPIs' : statusFilter === 'rejected' ? 'Rejected KPIs' : 'Submitted KPIs'}
+                  {statusFilter === 'approved' ? 'Approved KPIs' : statusFilter === 'rejected' ? 'Rejected KPIs' : 'Pending KPIs'}
                 </CardTitle>
                 <div className="flex flex-wrap items-center gap-x-6 gap-y-2 mt-2 text-sm text-muted-foreground">
                   <span className="flex items-center gap-1.5">
