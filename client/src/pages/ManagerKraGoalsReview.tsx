@@ -596,7 +596,7 @@ export default function ManagerKraGoalsReview() {
                           >
                             <TableCell>{review.kpiName}</TableCell>
                             <TableCell>{review.reviewFrequency}</TableCell>
-                            <TableCell>{review.kpiWeightage}%</TableCell>
+                            <TableCell>{review.kraWeightage > 0 ? `${review.kraWeightage}%` : '-'}</TableCell>
                             <TableCell className="text-sm min-w-[120px]">{periodDisplay}</TableCell>
                             <TableCell>{review.targetValue || '-'}</TableCell>
                             <TableCell>{review.thresholdValue || '-'}</TableCell>
