@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { Loader2 } from "lucide-react";
+import { Loader2, ChevronRight, ChevronDown } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -11,10 +11,46 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RoleGuard } from "@/components/RoleGuard";
 
+interface PeriodData {
+  periodKey: string;
+  periodStart: string;
+  periodEnd: string;
+  target: number;
+  actual: number;
+  status: string;
+}
+
+interface EmployeeData {
+  employeeId: string;
+  employeeName: string;
+  employeeCode: string;
+  target: number;
+  actual: number;
+  weightage: number;
+  weightageAchieved: number;
+  wtdScore: number;
+  periods: PeriodData[];
+}
+
+interface KpiRow {
+  kpiId: string;
+  kpi: string;
+  kpiCode: string;
+  kraName: string;
+  kraCode: string;
+  frequency: string;
+  weightage: number;
+  target: number;
+  actual: number;
+  weightageAchieved: number;
+  wtdScore: number;
+  employees: EmployeeData[];
+}
+
 export default function ReportScoreCard() {
   const [fromDate, setFromDate] = useState(() => {
     const d = new Date();
-    d.setDate(1);
+    d.setFullYear(d.getFullYear() - 1);
     return d.toISOString().split('T')[0];
   });
   const [toDate, setToDate] = useState(() => new Date().toISOString().split('T')[0]);
@@ -25,11 +61,13 @@ export default function ReportScoreCard() {
   const [gradeFilter, setGradeFilter] = useState<string[]>([]);
   const [businessRoleFilter, setBusinessRoleFilter] = useState<string[]>([]);
   const [employeeFilter, setEmployeeFilter] = useState<string[]>([]);
+  const [expandedKpis, setExpandedKpis] = useState<Set<string>>(new Set());
+  const [expandedEmployees, setExpandedEmployees] = useState<Set<string>>(new Set());
 
   const [appliedParams, setAppliedParams] = useState<string>(() => {
     const params = new URLSearchParams();
     const d = new Date();
-    d.setDate(1);
+    d.setFullYear(d.getFullYear() - 1);
     params.set('fromDate', d.toISOString().split('T')[0]);
     params.set('toDate', new Date().toISOString().split('T')[0]);
     params.set('scope', 'direct');
@@ -70,11 +108,13 @@ export default function ReportScoreCard() {
 
   const handleApplyFilters = () => {
     setAppliedParams(buildQueryParams());
+    setExpandedKpis(new Set());
+    setExpandedEmployees(new Set());
   };
 
   const handleClearFilters = () => {
     const d = new Date();
-    d.setDate(1);
+    d.setFullYear(d.getFullYear() - 1);
     const defaultFrom = d.toISOString().split('T')[0];
     const defaultTo = new Date().toISOString().split('T')[0];
     setFromDate(defaultFrom);
@@ -86,6 +126,8 @@ export default function ReportScoreCard() {
     setGradeFilter([]);
     setBusinessRoleFilter([]);
     setEmployeeFilter([]);
+    setExpandedKpis(new Set());
+    setExpandedEmployees(new Set());
     const params = new URLSearchParams();
     params.set('fromDate', defaultFrom);
     params.set('toDate', defaultTo);
@@ -93,14 +135,40 @@ export default function ReportScoreCard() {
     setAppliedParams(params.toString());
   };
 
-  const { data, isLoading } = useQuery<any[]>({
+  const { data, isLoading } = useQuery<KpiRow[]>({
     queryKey: ['/api/reports/score-card', appliedParams],
     queryFn: () => fetch(`/api/reports/score-card?${appliedParams}`).then(r => r.json()),
     enabled: !!fromDate && !!toDate,
   });
 
-  const formatDate = (date: string | null) => {
-    if (!date) return '-';
+  const toggleKpi = (kpiId: string) => {
+    setExpandedKpis(prev => {
+      const next = new Set(prev);
+      if (next.has(kpiId)) {
+        next.delete(kpiId);
+        const newEmpSet = new Set(expandedEmployees);
+        for (const key of expandedEmployees) {
+          if (key.startsWith(kpiId + ':')) newEmpSet.delete(key);
+        }
+        setExpandedEmployees(newEmpSet);
+      } else {
+        next.add(kpiId);
+      }
+      return next;
+    });
+  };
+
+  const toggleEmployee = (kpiId: string, employeeId: string) => {
+    const key = `${kpiId}:${employeeId}`;
+    setExpandedEmployees(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const formatPeriodDate = (date: string) => {
     try {
       return format(new Date(date), 'MMM dd, yyyy');
     } catch {
@@ -108,12 +176,15 @@ export default function ReportScoreCard() {
     }
   };
 
+  const totalWeightage = data?.reduce((sum, row) => sum + row.weightage, 0) || 0;
+  const totalWtdScore = data?.reduce((sum, row) => sum + row.wtdScore, 0) || 0;
+
   return (
     <RoleGuard allowedRoles={["manager"]}>
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-semibold">Score Card Report</h1>
-          <p className="text-muted-foreground">View evaluation scores for your team members</p>
+          <p className="text-muted-foreground">Aggregated KPI performance across your team members</p>
         </div>
 
         <Card>
@@ -231,48 +302,121 @@ export default function ReportScoreCard() {
               </div>
             ) : !data || data.length === 0 ? (
               <div className="text-center py-12">
-                <p className="text-muted-foreground">No data found</p>
+                <p className="text-muted-foreground">No KPI data found for the selected filters</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Employee Code</TableHead>
-                      <TableHead>Employee Name</TableHead>
-                      <TableHead>Department</TableHead>
-                      <TableHead>Location</TableHead>
-                      <TableHead>Review Cycle</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Overall Rating</TableHead>
-                      <TableHead>Calibrated Rating</TableHead>
-                      <TableHead>Self Evaluation Date</TableHead>
-                      <TableHead>Manager Evaluation Date</TableHead>
-                      <TableHead>Meeting Completed</TableHead>
-                      <TableHead>Finalized Date</TableHead>
+                      <TableHead className="w-[300px]">KPI</TableHead>
+                      <TableHead>Frequency</TableHead>
+                      <TableHead className="text-right">Weightage</TableHead>
+                      <TableHead className="text-right">Target</TableHead>
+                      <TableHead className="text-right">Actual</TableHead>
+                      <TableHead className="text-right">Weightage Achieved</TableHead>
+                      <TableHead className="text-right">WTD Score</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {data.map((row: any, index: number) => (
-                      <TableRow key={row.id || index}>
-                        <TableCell className="font-medium">{row.employeeCode || '-'}</TableCell>
-                        <TableCell>{row.employeeName || '-'}</TableCell>
-                        <TableCell>{row.department || '-'}</TableCell>
-                        <TableCell>{row.location || '-'}</TableCell>
-                        <TableCell>{row.reviewCycleName || '-'}</TableCell>
-                        <TableCell>
-                          <Badge variant={row.status === 'completed' ? 'default' : 'secondary'}>
-                            {row.status || '-'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>{row.overallRating ?? '-'}</TableCell>
-                        <TableCell>{row.calibratedRating ?? '-'}</TableCell>
-                        <TableCell>{formatDate(row.selfEvaluationSubmittedAt)}</TableCell>
-                        <TableCell>{formatDate(row.managerEvaluationSubmittedAt)}</TableCell>
-                        <TableCell>{formatDate(row.meetingCompletedAt)}</TableCell>
-                        <TableCell>{formatDate(row.finalizedAt)}</TableCell>
-                      </TableRow>
+                    {data.map((row) => (
+                      <>
+                        <TableRow
+                          key={row.kpiId}
+                          className="cursor-pointer hover:bg-muted/50"
+                          onClick={() => toggleKpi(row.kpiId)}
+                        >
+                          <TableCell className="font-medium">
+                            <div className="flex items-center gap-2">
+                              {row.employees.length > 0 ? (
+                                expandedKpis.has(row.kpiId) ? (
+                                  <ChevronDown className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                                ) : (
+                                  <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                                )
+                              ) : <div className="w-4" />}
+                              <span>{row.kpi}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>{row.frequency}</TableCell>
+                          <TableCell className="text-right">{row.weightage}</TableCell>
+                          <TableCell className="text-right">{row.target}</TableCell>
+                          <TableCell className="text-right">{row.actual}</TableCell>
+                          <TableCell className="text-right">{row.weightageAchieved}</TableCell>
+                          <TableCell className="text-right font-semibold">{row.wtdScore}</TableCell>
+                        </TableRow>
+
+                        {expandedKpis.has(row.kpiId) && row.employees.map((emp) => (
+                          <>
+                            <TableRow
+                              key={`${row.kpiId}-${emp.employeeId}`}
+                              className="bg-muted/30 cursor-pointer hover:bg-muted/50"
+                              onClick={() => toggleEmployee(row.kpiId, emp.employeeId)}
+                            >
+                              <TableCell>
+                                <div className="flex items-center gap-2 pl-6">
+                                  {emp.periods.length > 0 ? (
+                                    expandedEmployees.has(`${row.kpiId}:${emp.employeeId}`) ? (
+                                      <ChevronDown className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                                    ) : (
+                                      <ChevronRight className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                                    )
+                                  ) : <div className="w-3" />}
+                                  <span className="text-sm">{emp.employeeName}</span>
+                                  <span className="text-xs text-muted-foreground">({emp.employeeCode})</span>
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-sm text-muted-foreground">-</TableCell>
+                              <TableCell className="text-right text-sm">{emp.weightage}</TableCell>
+                              <TableCell className="text-right text-sm">{emp.target}</TableCell>
+                              <TableCell className="text-right text-sm">{emp.actual}</TableCell>
+                              <TableCell className="text-right text-sm">{emp.weightageAchieved}</TableCell>
+                              <TableCell className="text-right text-sm">{emp.wtdScore}</TableCell>
+                            </TableRow>
+
+                            {expandedEmployees.has(`${row.kpiId}:${emp.employeeId}`) && emp.periods.map((period) => (
+                              <TableRow
+                                key={`${row.kpiId}-${emp.employeeId}-${period.periodKey}`}
+                                className="bg-muted/10"
+                              >
+                                <TableCell>
+                                  <div className="pl-14 text-xs text-muted-foreground">
+                                    {period.periodKey}
+                                    <span className="ml-2">
+                                      ({formatPeriodDate(period.periodStart)} - {formatPeriodDate(period.periodEnd)})
+                                    </span>
+                                  </div>
+                                </TableCell>
+                                <TableCell>
+                                  <Badge variant={period.status === 'approved' ? 'default' : 'secondary'} className="text-xs">
+                                    {period.status}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="text-right text-xs">-</TableCell>
+                                <TableCell className="text-right text-xs">{period.target}</TableCell>
+                                <TableCell className="text-right text-xs">{period.actual}</TableCell>
+                                <TableCell className="text-right text-xs">
+                                  {period.target > 0 ? Math.round((period.actual / period.target) * 100) : 0}
+                                </TableCell>
+                                <TableCell className="text-right text-xs">
+                                  {period.target > 0 ? ((period.actual / period.target) * row.weightage).toFixed(1) : '0'}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </>
+                        ))}
+                      </>
                     ))}
+
+                    <TableRow className="border-t-2 font-bold bg-muted/20">
+                      <TableCell>Total</TableCell>
+                      <TableCell></TableCell>
+                      <TableCell className="text-right">{totalWeightage}</TableCell>
+                      <TableCell className="text-right">{data.reduce((s, r) => s + r.target, 0)}</TableCell>
+                      <TableCell className="text-right">{data.reduce((s, r) => s + r.actual, 0)}</TableCell>
+                      <TableCell className="text-right">-</TableCell>
+                      <TableCell className="text-right">{totalWtdScore.toFixed(1)}</TableCell>
+                    </TableRow>
                   </TableBody>
                 </Table>
               </div>

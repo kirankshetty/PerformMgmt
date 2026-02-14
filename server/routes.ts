@@ -39,8 +39,8 @@ import { sendEmail, sendReviewInvitation, sendReviewReminder, sendReviewCompleti
 import { ObjectStorageService, parseObjectPath, signObjectURL } from "./objectStorage";
 import { seedTestUsers, testUsers } from "./seedUsers";
 import { db } from "./db";
-import { levels as levelsTable, grades as gradesTable, businessRoles as businessRolesTable } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { levels as levelsTable, grades as gradesTable, businessRoles as businessRolesTable, kpiTargets, kpis, kras, kraGoalReviews, reviewFrequencies } from "@shared/schema";
+import { eq, and, inArray, lte } from "drizzle-orm";
 import * as XLSX from 'xlsx';
 import PDFDocument from 'pdfkit';
 import PizZip from 'pizzip';
@@ -7012,89 +7012,191 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let members: any[];
 
       if (scope === 'all') {
-        const memberIds = new Set<string>();
+        const mIds = new Set<string>();
         const queue = allUsers.filter(u => u.reportingManagerId === managerId).map(u => u.id);
         while (queue.length > 0) {
           const current = queue.shift()!;
-          if (!memberIds.has(current)) {
-            memberIds.add(current);
+          if (!mIds.has(current)) {
+            mIds.add(current);
             const subordinates = allUsers.filter(u => u.reportingManagerId === current);
-            for (const sub of subordinates) {
-              queue.push(sub.id);
-            }
+            for (const sub of subordinates) queue.push(sub.id);
           }
         }
-        members = allUsers.filter(u => memberIds.has(u.id));
+        members = allUsers.filter(u => mIds.has(u.id));
       } else {
         members = allUsers.filter(u => u.reportingManagerId === managerId);
       }
 
       if (location) {
-        const locationIds = (location as string).split(',');
-        members = members.filter(u => u.locationId && locationIds.includes(u.locationId));
+        const ids = (location as string).split(',');
+        members = members.filter(u => u.locationId && ids.includes(u.locationId));
       }
       if (department) {
-        const deptNames = (department as string).split(',');
-        members = members.filter(u => u.department && deptNames.includes(u.department));
+        const vals = (department as string).split(',');
+        members = members.filter(u => u.department && vals.includes(u.department));
       }
       if (level) {
-        const levelIds = (level as string).split(',');
-        members = members.filter(u => u.levelId && levelIds.includes(u.levelId));
+        const ids = (level as string).split(',');
+        members = members.filter(u => u.levelId && ids.includes(u.levelId));
       }
       if (grade) {
-        const gradeIds = (grade as string).split(',');
-        members = members.filter(u => u.gradeId && gradeIds.includes(u.gradeId));
+        const ids = (grade as string).split(',');
+        members = members.filter(u => u.gradeId && ids.includes(u.gradeId));
       }
       if (businessRole) {
-        const brIds = (businessRole as string).split(',');
-        members = members.filter(u => u.businessRoleId && brIds.includes(u.businessRoleId));
+        const ids = (businessRole as string).split(',');
+        members = members.filter(u => u.businessRoleId && ids.includes(u.businessRoleId));
       }
       if (employee) {
-        const empIds = (employee as string).split(',');
-        members = members.filter(u => empIds.includes(u.id));
+        const ids = (employee as string).split(',');
+        members = members.filter(u => ids.includes(u.id));
       }
 
-      const memberIds = new Set(members.map(m => m.id));
-      const allEvaluations = await storage.getEvaluations();
-      const filtered = allEvaluations.filter(e =>
-        memberIds.has(e.employeeId) &&
-        e.createdAt && new Date(e.createdAt) >= from &&
-        e.createdAt && new Date(e.createdAt) <= to
+      if (members.length === 0) {
+        return res.json([]);
+      }
+
+      const memberIds = members.map(m => m.id);
+
+      const allTargets = await db.select().from(kpiTargets).where(
+        inArray(kpiTargets.employeeId, memberIds)
       );
 
-      const reviewCycles = await storage.getReviewCycles();
-      const rcMap = new Map(reviewCycles.map(rc => [rc.id, rc]));
+      if (allTargets.length === 0) {
+        return res.json([]);
+      }
 
-      const locationCache = new Map<string, string>();
-      const result = [];
-      for (const evaluation of filtered) {
-        const emp = members.find(m => m.id === evaluation.employeeId);
-        let locationName = '';
-        if (emp?.locationId) {
-          if (!locationCache.has(emp.locationId)) {
-            const loc = await storage.getLocation(emp.locationId);
-            locationCache.set(emp.locationId, loc?.name || '');
-          }
-          locationName = locationCache.get(emp.locationId) || '';
+      const kpiIds = [...new Set(allTargets.map(t => t.kpiId))];
+      const kraIds = [...new Set(allTargets.map(t => t.kraId))];
+
+      const allKpis = kpiIds.length > 0 ? await db.select().from(kpis).where(inArray(kpis.id, kpiIds)) : [];
+      const allKras = kraIds.length > 0 ? await db.select().from(kras).where(inArray(kras.id, kraIds)) : [];
+
+      const kraFreqIds = [...new Set(allKras.map(k => k.reviewFrequencyId).filter(Boolean))];
+      const allFreqs = kraFreqIds.length > 0 ? await db.select().from(reviewFrequencies).where(inArray(reviewFrequencies.id, kraFreqIds as string[])) : [];
+
+      const kpiMap = new Map(allKpis.map(k => [k.id, k]));
+      const kraMap = new Map(allKras.map(k => [k.id, k]));
+      const freqMap = new Map(allFreqs.map(f => [f.id, f]));
+
+      const allReviews = await db.select().from(kraGoalReviews).where(
+        and(
+          inArray(kraGoalReviews.employeeId, memberIds),
+          inArray(kraGoalReviews.status, ['submitted', 'approved'])
+        )
+      );
+
+      const dateFilteredReviews = allReviews.filter(r => {
+        const pStart = new Date(r.periodStartDate);
+        const pEnd = new Date(r.periodEndDate);
+        return pEnd >= from && pStart <= to;
+      });
+
+      const kpiAggMap = new Map<string, {
+        kpiId: string; kpiName: string; kpiCode: string; kraName: string; kraCode: string;
+        frequency: string; weightage: number;
+        totalTarget: number; totalActual: number;
+        employees: Map<string, {
+          employeeId: string; employeeName: string; employeeCode: string;
+          target: number; actual: number;
+          periods: Array<{ periodKey: string; periodStart: string; periodEnd: string; target: number; actual: number; status: string }>;
+        }>;
+      }>();
+
+      for (const target of allTargets) {
+        const kpi = kpiMap.get(target.kpiId);
+        const kra = kraMap.get(target.kraId);
+        if (!kpi || !kra) continue;
+
+        const freq = kra.reviewFrequencyId ? freqMap.get(kra.reviewFrequencyId) : null;
+        const emp = members.find(m => m.id === target.employeeId);
+        if (!emp) continue;
+
+        if (!kpiAggMap.has(target.kpiId)) {
+          kpiAggMap.set(target.kpiId, {
+            kpiId: kpi.id,
+            kpiName: kpi.name,
+            kpiCode: kpi.code,
+            kraName: kra.displayName,
+            kraCode: kra.code,
+            frequency: freq?.code || '-',
+            weightage: kpi.weightageContribution,
+            totalTarget: 0,
+            totalActual: 0,
+            employees: new Map(),
+          });
         }
-        const rc = rcMap.get(evaluation.reviewCycleId);
-        result.push({
-          employeeId: emp?.id,
-          employeeName: emp ? `${emp.firstName || ''} ${emp.lastName || ''}`.trim() : '',
-          employeeCode: emp?.code || '',
-          employeeEmail: emp?.email || '',
-          department: emp?.department || '',
-          location: locationName,
-          reviewCycleName: rc?.name || rc?.description || '',
-          selfEvaluationSubmittedAt: evaluation.selfEvaluationSubmittedAt,
-          managerEvaluationSubmittedAt: evaluation.managerEvaluationSubmittedAt,
-          overallRating: evaluation.overallRating,
-          calibratedRating: evaluation.calibratedRating,
-          status: evaluation.status,
-          meetingCompletedAt: evaluation.meetingCompletedAt,
-          finalizedAt: evaluation.finalizedAt,
+        const agg = kpiAggMap.get(target.kpiId)!;
+        const defaultTargetNum = parseFloat(target.targetValue) || 0;
+
+        const empReviews = dateFilteredReviews.filter(r => r.kpiId === target.kpiId && r.employeeId === target.employeeId);
+
+        let empActual = 0;
+        let empTotalTarget = 0;
+        const periods: Array<{ periodKey: string; periodStart: string; periodEnd: string; target: number; actual: number; status: string }> = [];
+
+        for (const review of empReviews) {
+          const actual = parseFloat(review.selfRating || '0') || 0;
+          empActual += actual;
+
+          const periodTarget = await storage.getKpiTargetHistoryForPeriod(target.id, new Date(review.periodStartDate));
+          const periodTargetNum = periodTarget ? (parseFloat(periodTarget.targetValue) || 0) : defaultTargetNum;
+          empTotalTarget += periodTargetNum;
+
+          periods.push({
+            periodKey: review.periodKey,
+            periodStart: new Date(review.periodStartDate).toISOString(),
+            periodEnd: new Date(review.periodEndDate).toISOString(),
+            target: periodTargetNum,
+            actual,
+            status: review.status,
+          });
+        }
+
+        if (empReviews.length === 0) {
+          empTotalTarget = defaultTargetNum;
+        }
+
+        agg.totalTarget += empTotalTarget;
+        agg.totalActual += empActual;
+
+        agg.employees.set(target.employeeId, {
+          employeeId: emp.id,
+          employeeName: `${emp.firstName || ''} ${emp.lastName || ''}`.trim(),
+          employeeCode: emp.code || '',
+          target: empTotalTarget,
+          actual: empActual,
+          periods,
         });
       }
+
+      const result = Array.from(kpiAggMap.values()).map(agg => {
+        const weightageAchieved = agg.totalTarget > 0 ? Math.round((agg.totalActual / agg.totalTarget) * 100) : 0;
+        const wtdScore = agg.totalTarget > 0 ? parseFloat(((agg.totalActual / agg.totalTarget) * agg.weightage).toFixed(1)) : 0;
+        return {
+          kpiId: agg.kpiId,
+          kpi: agg.kpiName,
+          kpiCode: agg.kpiCode,
+          kraName: agg.kraName,
+          kraCode: agg.kraCode,
+          frequency: agg.frequency,
+          weightage: agg.weightage,
+          target: agg.totalTarget,
+          actual: agg.totalActual,
+          weightageAchieved,
+          wtdScore,
+          employees: Array.from(agg.employees.values()).map(emp => {
+            const empWeightageAchieved = emp.target > 0 ? Math.round((emp.actual / emp.target) * 100) : 0;
+            const empWtdScore = emp.target > 0 ? parseFloat(((emp.actual / emp.target) * agg.weightage).toFixed(1)) : 0;
+            return {
+              ...emp,
+              weightage: agg.weightage,
+              weightageAchieved: empWeightageAchieved,
+              wtdScore: empWtdScore,
+            };
+          }),
+        };
+      });
 
       res.json(result);
     } catch (error: any) {
