@@ -173,6 +173,8 @@ export default function ManagerKraGoalsReview() {
                   <TableHead>KPI Code</TableHead>
                   <TableHead>KPI Name</TableHead>
                   <TableHead>Input Type</TableHead>
+                  <TableHead>Target Value</TableHead>
+                  <TableHead>Threshold Value</TableHead>
                   <TableHead>Actual Value</TableHead>
                   <TableHead>Pipeline Value</TableHead>
                   <TableHead>Period</TableHead>
@@ -186,13 +188,15 @@ export default function ManagerKraGoalsReview() {
                   const periodStart = new Date(review.periodStartDate);
                   const periodEnd = new Date(review.periodEndDate);
                   const periodDisplay = `${periodStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${periodEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
-                  const colSpan = showActions ? 7 : 6;
+                  const colSpan = showActions ? 9 : 8;
                   return (
                     <Fragment key={review.id}>
                       <TableRow>
                         <TableCell className="font-medium">{review.kpiCode}</TableCell>
                         <TableCell>{review.kpiName}</TableCell>
                         <TableCell className="capitalize">{review.kpiInputType}</TableCell>
+                        <TableCell>{review.targetValue || '-'}</TableCell>
+                        <TableCell>{review.thresholdValue || '-'}</TableCell>
                         <TableCell>{review.selfRating || '-'}</TableCell>
                         <TableCell>{review.pipelineValue || '-'}</TableCell>
                         <TableCell className="text-sm">{periodDisplay}</TableCell>
