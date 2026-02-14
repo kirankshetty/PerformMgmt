@@ -53,6 +53,7 @@ interface ReviewItem {
 export default function ManagerKraGoalsReview() {
   const { toast } = useToast();
   const [selectedEmployee, setSelectedEmployee] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [managerRemarks, setManagerRemarks] = useState<Record<string, { remarksActual: string; remarksPipeline: string }>>({});
   const [rejectingReviewId, setRejectingReviewId] = useState<string | null>(null);
   const [rejectionReason, setRejectionReason] = useState("");
@@ -411,7 +412,10 @@ export default function ManagerKraGoalsReview() {
       </h1>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
+        <Card
+          className={`cursor-pointer transition-shadow hover:shadow-md ${statusFilter === 'submitted' ? 'ring-2 ring-blue-500' : ''}`}
+          onClick={() => setStatusFilter(statusFilter === 'submitted' ? null : 'submitted')}
+        >
           <CardContent className="p-4 flex items-center gap-3">
             <Clock className="h-8 w-8 text-blue-500" />
             <div>
@@ -420,7 +424,10 @@ export default function ManagerKraGoalsReview() {
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card
+          className={`cursor-pointer transition-shadow hover:shadow-md ${statusFilter === 'approved' ? 'ring-2 ring-green-500' : ''}`}
+          onClick={() => setStatusFilter(statusFilter === 'approved' ? null : 'approved')}
+        >
           <CardContent className="p-4 flex items-center gap-3">
             <CheckCircle className="h-8 w-8 text-green-500" />
             <div>
@@ -429,7 +436,10 @@ export default function ManagerKraGoalsReview() {
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card
+          className={`cursor-pointer transition-shadow hover:shadow-md ${statusFilter === 'rejected' ? 'ring-2 ring-red-500' : ''}`}
+          onClick={() => setStatusFilter(statusFilter === 'rejected' ? null : 'rejected')}
+        >
           <CardContent className="p-4 flex items-center gap-3">
             <XCircle className="h-8 w-8 text-red-500" />
             <div>
@@ -442,73 +452,83 @@ export default function ManagerKraGoalsReview() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Submitted KPIs</CardTitle>
+          <CardTitle>
+            {statusFilter === 'submitted' ? 'Pending KPIs' : statusFilter === 'approved' ? 'Approved KPIs' : statusFilter === 'rejected' ? 'Rejected KPIs' : 'Submitted KPIs'}
+          </CardTitle>
         </CardHeader>
         <CardContent>
-          {!reviews || reviews.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <Target className="h-12 w-12 mx-auto mb-3 opacity-50" />
-              <p>No KPIs have been submitted for review</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Employee Code</TableHead>
-                    <TableHead>Employee Name</TableHead>
-                    <TableHead>KPI Name</TableHead>
-                    <TableHead>Review Frequency</TableHead>
-                    <TableHead>Weightage</TableHead>
-                    <TableHead>Period</TableHead>
-                    <TableHead>Target Value</TableHead>
-                    <TableHead>Threshold Value</TableHead>
-                    <TableHead>Actual Value</TableHead>
-                    <TableHead>Pipeline Value</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {reviews.map((review) => {
-                    const periodStart = new Date(review.periodStartDate);
-                    const periodEnd = new Date(review.periodEndDate);
-                    const periodDisplay = `${periodStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${periodEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
-                    const getStatusBadge = (status: string) => {
-                      switch (status) {
-                        case 'submitted': return <Badge className="bg-blue-100 text-blue-800">Pending</Badge>;
-                        case 'approved': return <Badge className="bg-green-100 text-green-800">Approved</Badge>;
-                        case 'rejected': return <Badge variant="destructive">Rejected</Badge>;
-                        default: return <Badge variant="outline">{status}</Badge>;
-                      }
-                    };
-                    return (
-                      <TableRow
-                        key={review.id}
-                        className="cursor-pointer hover:bg-muted/50"
-                        onClick={() => setSelectedEmployee(review.employeeId)}
-                      >
-                        <TableCell className="font-medium">{review.employeeCode}</TableCell>
-                        <TableCell>{review.employeeName}</TableCell>
-                        <TableCell>{review.kpiName}</TableCell>
-                        <TableCell>{review.reviewFrequency}</TableCell>
-                        <TableCell>{review.kpiWeightage}%</TableCell>
-                        <TableCell className="text-sm min-w-[120px]">{periodDisplay}</TableCell>
-                        <TableCell>{review.targetValue || '-'}</TableCell>
-                        <TableCell>{review.thresholdValue || '-'}</TableCell>
-                        <TableCell>{review.selfRating || '-'}</TableCell>
-                        <TableCell>{review.pipelineValue || '-'}</TableCell>
-                        <TableCell>{getStatusBadge(review.status)}</TableCell>
-                        <TableCell>
-                          <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-          )}
+          {(() => {
+            const filteredReviews = statusFilter ? reviews?.filter(r => r.status === statusFilter) : reviews;
+            if (!filteredReviews || filteredReviews.length === 0) {
+              return (
+                <div className="text-center py-12 text-muted-foreground">
+                  <Target className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                  <p>No KPIs found</p>
+                </div>
+              );
+            }
+            return (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Employee Name</TableHead>
+                      <TableHead>KPI Name</TableHead>
+                      <TableHead>Review Frequency</TableHead>
+                      <TableHead>Weightage</TableHead>
+                      <TableHead>Period</TableHead>
+                      <TableHead>Target Value</TableHead>
+                      <TableHead>Threshold Value</TableHead>
+                      <TableHead>Actual Value</TableHead>
+                      <TableHead>Pipeline Value</TableHead>
+                      <TableHead>Status</TableHead>
+                      {statusFilter !== 'rejected' && <TableHead>Actions</TableHead>}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredReviews.map((review) => {
+                      const periodStart = new Date(review.periodStartDate);
+                      const periodEnd = new Date(review.periodEndDate);
+                      const periodDisplay = `${periodStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${periodEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+                      return (
+                        <TableRow
+                          key={review.id}
+                          className={`hover:bg-muted/50 ${review.status !== 'rejected' ? 'cursor-pointer' : ''}`}
+                          onClick={() => { if (review.status !== 'rejected') setSelectedEmployee(review.employeeId); }}
+                        >
+                          <TableCell>{review.employeeName}</TableCell>
+                          <TableCell>{review.kpiName}</TableCell>
+                          <TableCell>{review.reviewFrequency}</TableCell>
+                          <TableCell>{review.kpiWeightage}%</TableCell>
+                          <TableCell className="text-sm min-w-[120px]">{periodDisplay}</TableCell>
+                          <TableCell>{review.targetValue || '-'}</TableCell>
+                          <TableCell>{review.thresholdValue || '-'}</TableCell>
+                          <TableCell>{review.selfRating || '-'}</TableCell>
+                          <TableCell>{review.pipelineValue || '-'}</TableCell>
+                          <TableCell>
+                            {review.status === 'submitted' && <Badge className="bg-blue-100 text-blue-800">Pending</Badge>}
+                            {review.status === 'approved' && <Badge className="bg-green-100 text-green-800">Approved</Badge>}
+                            {review.status === 'rejected' && (
+                              <Badge variant="destructive" title={review.managerComments ? `Reason: ${review.managerComments}` : 'Rejected'} className="cursor-help">
+                                Rejected
+                              </Badge>
+                            )}
+                            {!['submitted', 'approved', 'rejected'].includes(review.status) && <Badge variant="outline">{review.status}</Badge>}
+                          </TableCell>
+                          {review.status !== 'rejected' && (
+                            <TableCell>
+                              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                            </TableCell>
+                          )}
+                          {review.status === 'rejected' && statusFilter !== 'rejected' && <TableCell />}
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            );
+          })()}
         </CardContent>
       </Card>
     </div>
