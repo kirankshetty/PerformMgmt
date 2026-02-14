@@ -6803,7 +6803,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const managerId = req.user.claims.sub;
       const reviews = await storage.getSubmittedKraGoalReviewsForManager(managerId);
 
-      const allUsers = await storage.getUsers({});
+      const allUsers = await storage.getUsers({}, managerId);
       const userMap = new Map(allUsers.map(u => [u.id, u]));
 
       const uniqueKraIds = [...new Set(reviews.map(r => r.kraId).filter(Boolean))];
@@ -6873,7 +6873,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return {
           ...r,
           employeeName: employee ? `${employee.firstName || ''} ${employee.lastName || ''}`.trim() : 'Unknown',
-          employeeCode: employee?.employeeCode || '',
+          employeeCode: employee?.code || '',
           employeeEmail: employee?.email || '',
           employeeDepartment: employee?.department || '',
           employeeLocation: employee?.locationId ? (locationMap.get(employee.locationId) || '') : '',
@@ -6986,7 +6986,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         id: m.id,
         firstName: m.firstName || '',
         lastName: m.lastName || '',
-        employeeCode: m.employeeCode || '',
+        employeeCode: m.code || '',
       }));
 
       res.json({ locations, departments, levels, grades, businessRoles, employees });
@@ -7008,7 +7008,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const from = new Date(fromDate as string);
       const to = new Date(toDate as string);
 
-      const allUsers = await storage.getUsers({});
+      const allUsers = await storage.getUsers({}, managerId);
       let members: any[];
 
       if (scope === 'all') {
@@ -7115,7 +7115,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const from = new Date(fromDate as string);
       const to = new Date(toDate as string);
 
-      const allUsers = await storage.getUsers({});
+      const allUsers = await storage.getUsers({}, managerId);
       let members: any[];
 
       if (scope === 'all') {
@@ -7250,7 +7250,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const from = new Date(fromDate as string);
       const to = new Date(toDate as string);
 
-      const allUsers = await storage.getUsers({});
+      const allUsers = await storage.getUsers({}, managerId);
       let members: any[];
 
       if (scope === 'all') {

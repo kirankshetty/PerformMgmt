@@ -32,6 +32,8 @@ import {
   FileBarChart,
   Activity,
   TrendingUp,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import type { Company } from "@shared/schema";
 
@@ -75,21 +77,23 @@ const navItems: NavItem[] = [
   { href: "/development-goals", label: "My Development Goals", icon: Target, roles: ["employee"] },
   { href: "/kra-goals-self-review", label: "KRAs/Goals Self Review", icon: ClipboardList, roles: ["employee"] },
   { href: "/feedback-requests", label: "Feedback Requests", icon: MessageSquare, roles: ["employee"] },
+  { href: "/settings", label: "Settings", icon: Settings },
+];
+
+const reportItems: NavItem[] = [
   { href: "/report-score-card", label: "Score Card", icon: FileBarChart, roles: ["manager"] },
   { href: "/report-activity", label: "Activity Report", icon: Activity, roles: ["manager"] },
   { href: "/report-trend", label: "Trend Report", icon: TrendingUp, roles: ["manager"] },
-  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
+  const [reportsOpen, setReportsOpen] = useState(false);
   const [location] = useLocation();
   const { user } = useAuth();
 
-  // Use active role from session for role switching support
   const activeRole = (user as any)?.activeRole || (user as any)?.role || "employee";
 
-  // Fetch company information to display logo
   const { data: company } = useQuery<Company>({
     queryKey: ["/api/companies/current"],
     enabled: !!user,
@@ -99,6 +103,14 @@ export function Sidebar() {
     if (!item.roles) return true;
     return item.roles.includes(activeRole);
   });
+
+  const filteredReportItems = reportItems.filter((item) => {
+    if (!item.roles) return true;
+    return item.roles.includes(activeRole);
+  });
+
+  const showReportsMenu = filteredReportItems.length > 0;
+  const isReportActive = reportItems.some(item => location === item.href);
 
   return (
     <div
@@ -151,22 +163,72 @@ export function Sidebar() {
         {filteredNavItems.map((item) => {
           const isActive = location === item.href;
           const Icon = item.icon;
+          const isSettings = item.href === "/settings";
 
           return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
-                isActive
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+            <div key={item.href}>
+              {isSettings && showReportsMenu && (
+                <div className="mb-1">
+                  <button
+                    onClick={() => setReportsOpen(!reportsOpen)}
+                    className={cn(
+                      "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors w-full",
+                      isReportActive
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                    )}
+                  >
+                    <BarChart3 className="h-5 w-5 flex-shrink-0" />
+                    {!collapsed && (
+                      <>
+                        <span className="flex-1 text-left">Reports</span>
+                        {reportsOpen || isReportActive ? (
+                          <ChevronDown className="h-4 w-4" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4" />
+                        )}
+                      </>
+                    )}
+                  </button>
+                  {(reportsOpen || isReportActive) && !collapsed && (
+                    <div className="ml-4 mt-1 space-y-1">
+                      {filteredReportItems.map((reportItem) => {
+                        const isSubActive = location === reportItem.href;
+                        const SubIcon = reportItem.icon;
+                        return (
+                          <Link
+                            key={reportItem.href}
+                            href={reportItem.href}
+                            className={cn(
+                              "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
+                              isSubActive
+                                ? "bg-primary text-primary-foreground"
+                                : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                            )}
+                          >
+                            <SubIcon className="h-4 w-4 flex-shrink-0" />
+                            <span>{reportItem.label}</span>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               )}
-              data-testid={`nav-${item.href.replace('/', '') || 'dashboard'}`}
-            >
-              <Icon className="h-5 w-5 flex-shrink-0" />
-              {!collapsed && <span>{item.label}</span>}
-            </Link>
+              <Link
+                href={item.href}
+                className={cn(
+                  "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
+                  isActive
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                )}
+                data-testid={`nav-${item.href.replace('/', '') || 'dashboard'}`}
+              >
+                <Icon className="h-5 w-5 flex-shrink-0" />
+                {!collapsed && <span>{item.label}</span>}
+              </Link>
+            </div>
           );
         })}
       </nav>
