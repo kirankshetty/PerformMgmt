@@ -1385,6 +1385,7 @@ export const kraGoalReviews = pgTable("kra_goal_reviews", {
   selfRating: varchar("self_rating"),
   pipelineValue: varchar("pipeline_value"),
   selfComments: text("self_comments"),
+  pipelineRemarks: text("pipeline_remarks"),
   status: kraGoalReviewStatusEnum("status").default('draft').notNull(),
   submittedAt: timestamp("submitted_at"),
   reviewedAt: timestamp("reviewed_at"),

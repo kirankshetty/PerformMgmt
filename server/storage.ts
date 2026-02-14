@@ -3234,6 +3234,7 @@ export class DatabaseStorage implements IStorage {
       selfRating: review.selfRating,
       pipelineValue: review.pipelineValue,
       selfComments: review.selfComments,
+      pipelineRemarks: review.pipelineRemarks,
       status: review.status,
       updatedAt: new Date(),
     };

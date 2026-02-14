@@ -6671,6 +6671,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             selfRating: existingReview?.selfRating || '',
             pipelineValue: existingReview?.pipelineValue || '',
             selfComments: existingReview?.selfComments || '',
+            pipelineRemarks: existingReview?.pipelineRemarks || '',
             status: reviewStatus,
             category,
             submittedAt: existingReview?.submittedAt || null,
@@ -6720,6 +6721,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           selfRating: review.selfRating || null,
           pipelineValue: review.pipelineValue || null,
           selfComments: review.selfComments || null,
+          pipelineRemarks: review.pipelineRemarks || null,
           status: 'draft',
         });
         results.push(saved);
@@ -6757,6 +6759,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           selfRating: review.selfRating || null,
           pipelineValue: review.pipelineValue || null,
           selfComments: review.selfComments || null,
+          pipelineRemarks: review.pipelineRemarks || null,
           status: 'submitted',
         });
         results.push(saved);

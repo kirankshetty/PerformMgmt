@@ -39,6 +39,7 @@ interface GoalItem {
   selfRating: string;
   pipelineValue: string;
   selfComments: string;
+  pipelineRemarks: string;
   status: string;
   category: string;
   submittedAt: string | null;
@@ -62,7 +63,7 @@ type CategoryType = 'pending' | 'new' | 'toBeSubmitted' | 'pendingApproval' | 'a
 export default function KraGoalsSelfReview() {
   const { toast } = useToast();
   const [activeCategory, setActiveCategory] = useState<CategoryType>('new');
-  const [editValues, setEditValues] = useState<Record<string, { selfRating: string; pipelineValue: string; selfComments: string }>>({});
+  const [editValues, setEditValues] = useState<Record<string, { selfRating: string; pipelineValue: string; selfComments: string; pipelineRemarks: string }>>({});
 
   const { data, isLoading } = useQuery<GoalsData>({
     queryKey: ["/api/employee/kra-goal-reviews"],
@@ -137,6 +138,7 @@ export default function KraGoalsSelfReview() {
           selfRating: editValues[key]?.selfRating || g.selfRating || '',
           pipelineValue: editValues[key]?.pipelineValue || g.pipelineValue || '',
           selfComments: editValues[key]?.selfComments || g.selfComments || '',
+          pipelineRemarks: editValues[key]?.pipelineRemarks || g.pipelineRemarks || '',
         };
       });
 
@@ -160,6 +162,7 @@ export default function KraGoalsSelfReview() {
         selfRating: editValues[key]?.selfRating || g.selfRating || '',
         pipelineValue: editValues[key]?.pipelineValue || g.pipelineValue || '',
         selfComments: editValues[key]?.selfComments || g.selfComments || '',
+        pipelineRemarks: editValues[key]?.pipelineRemarks || g.pipelineRemarks || '',
       };
     });
 
@@ -303,6 +306,19 @@ export default function KraGoalsSelfReview() {
                           const selfRating = editValues[editKey]?.selfRating ?? goal.selfRating ?? '';
                           const pipelineValue = editValues[editKey]?.pipelineValue ?? goal.pipelineValue ?? '';
                           const selfComments = editValues[editKey]?.selfComments ?? goal.selfComments ?? '';
+                          const pipelineRemarks = editValues[editKey]?.pipelineRemarks ?? goal.pipelineRemarks ?? '';
+                          const updateEdit = (field: string, value: string) => {
+                            setEditValues(prev => ({
+                              ...prev,
+                              [editKey]: {
+                                selfRating: prev[editKey]?.selfRating ?? goal.selfRating ?? '',
+                                pipelineValue: prev[editKey]?.pipelineValue ?? goal.pipelineValue ?? '',
+                                selfComments: prev[editKey]?.selfComments ?? goal.selfComments ?? '',
+                                pipelineRemarks: prev[editKey]?.pipelineRemarks ?? goal.pipelineRemarks ?? '',
+                                [field]: value,
+                              },
+                            }));
+                          };
                           return (
                             <>
                               <TableRow key={`${goal.kpiId}_${goal.periodKey}`}>
@@ -316,13 +332,8 @@ export default function KraGoalsSelfReview() {
                                     <Input
                                       placeholder={goal.kpiInputType || "Value"}
                                       value={selfRating}
-                                      onChange={(e) =>
-                                        setEditValues(prev => ({
-                                          ...prev,
-                                          [editKey]: { ...prev[editKey], selfRating: e.target.value, selfComments: prev[editKey]?.selfComments ?? goal.selfComments ?? '', pipelineValue: prev[editKey]?.pipelineValue ?? goal.pipelineValue ?? '' },
-                                        }))
-                                      }
-                                      className="w-24"
+                                      onChange={(e) => updateEdit('selfRating', e.target.value)}
+                                      className="w-24 text-right"
                                     />
                                   ) : (
                                     <span>{goal.selfRating || '-'}</span>
@@ -331,15 +342,10 @@ export default function KraGoalsSelfReview() {
                                 <TableCell>
                                   {isEditable ? (
                                     <Input
-                                      placeholder="Pipeline"
+                                      placeholder={goal.kpiInputType || "Value"}
                                       value={pipelineValue}
-                                      onChange={(e) =>
-                                        setEditValues(prev => ({
-                                          ...prev,
-                                          [editKey]: { ...prev[editKey], pipelineValue: e.target.value, selfRating: prev[editKey]?.selfRating ?? goal.selfRating ?? '', selfComments: prev[editKey]?.selfComments ?? goal.selfComments ?? '' },
-                                        }))
-                                      }
-                                      className="w-24"
+                                      onChange={(e) => updateEdit('pipelineValue', e.target.value)}
+                                      className="w-24 text-right"
                                     />
                                   ) : (
                                     <span>{goal.pipelineValue || '-'}</span>
@@ -347,24 +353,36 @@ export default function KraGoalsSelfReview() {
                                 </TableCell>
                                 <TableCell>{getStatusBadge(goal.status)}</TableCell>
                               </TableRow>
-                              <TableRow key={`${goal.kpiId}_${goal.periodKey}_remarks`} className="border-b">
-                                <TableCell colSpan={8} className="pt-0 pb-3">
+                              <TableRow key={`${goal.kpiId}_${goal.periodKey}_remarks`}>
+                                <TableCell colSpan={8} className="pt-0 pb-1">
                                   <div className="flex items-start gap-2">
-                                    <span className="text-sm font-medium text-muted-foreground whitespace-nowrap mt-1">Self Remarks:</span>
+                                    <span className="text-sm font-medium text-muted-foreground whitespace-nowrap mt-1">Remarks for Actual Value:</span>
                                     {isEditable ? (
                                       <Textarea
-                                        placeholder="Enter your remarks..."
+                                        placeholder="Enter remarks for actual value..."
                                         value={selfComments}
-                                        onChange={(e) =>
-                                          setEditValues(prev => ({
-                                            ...prev,
-                                            [editKey]: { ...prev[editKey], selfComments: e.target.value, selfRating: prev[editKey]?.selfRating ?? goal.selfRating ?? '', pipelineValue: prev[editKey]?.pipelineValue ?? goal.pipelineValue ?? '' },
-                                          }))
-                                        }
+                                        onChange={(e) => updateEdit('selfComments', e.target.value)}
                                         className="flex-1 h-8 min-h-8 text-sm"
                                       />
                                     ) : (
                                       <span className="text-sm">{goal.selfComments || '-'}</span>
+                                    )}
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                              <TableRow key={`${goal.kpiId}_${goal.periodKey}_pipeline_remarks`} className="border-b">
+                                <TableCell colSpan={8} className="pt-0 pb-3">
+                                  <div className="flex items-start gap-2">
+                                    <span className="text-sm font-medium text-muted-foreground whitespace-nowrap mt-1">Remarks for Pipeline Value:</span>
+                                    {isEditable ? (
+                                      <Textarea
+                                        placeholder="Enter remarks for pipeline value..."
+                                        value={pipelineRemarks}
+                                        onChange={(e) => updateEdit('pipelineRemarks', e.target.value)}
+                                        className="flex-1 h-8 min-h-8 text-sm"
+                                      />
+                                    ) : (
+                                      <span className="text-sm">{goal.pipelineRemarks || '-'}</span>
                                     )}
                                   </div>
                                 </TableCell>
