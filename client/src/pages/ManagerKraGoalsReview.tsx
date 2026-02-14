@@ -180,7 +180,7 @@ export default function ManagerKraGoalsReview() {
                   <TableHead>KPI Name</TableHead>
                   <TableHead>Input Type</TableHead>
                   <TableHead>Target Value</TableHead>
-                  <TableHead>Threshold Value</TableHead>
+                  <TableHead>Min Threshold Value</TableHead>
                   <TableHead>Actual Value</TableHead>
                   <TableHead>Pipeline Value</TableHead>
                   <TableHead>Period</TableHead>
@@ -576,7 +576,7 @@ export default function ManagerKraGoalsReview() {
                         <TableHead>Weightage</TableHead>
                         <TableHead>Period</TableHead>
                         <TableHead>Target Value</TableHead>
-                        <TableHead>Threshold Value</TableHead>
+                        <TableHead>Min Threshold Value</TableHead>
                         <TableHead>Actual Value</TableHead>
                         <TableHead>Pipeline Value</TableHead>
                         <TableHead>Status</TableHead>

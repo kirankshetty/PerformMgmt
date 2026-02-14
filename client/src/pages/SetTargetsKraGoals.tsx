@@ -636,7 +636,7 @@ export default function SetTargetsKraGoals() {
                               <TableHead>Input Type</TableHead>
                               <TableHead>Weightage</TableHead>
                               <TableHead>Target Value</TableHead>
-                              <TableHead>Threshold Value</TableHead>
+                              <TableHead>Min Threshold Value</TableHead>
                               <TableHead className="w-12"></TableHead>
                             </TableRow>
                           </TableHeader>
@@ -665,7 +665,7 @@ export default function SetTargetsKraGoals() {
                                   </TableCell>
                                   <TableCell>
                                     <Input
-                                      placeholder="Threshold"
+                                      placeholder="Min Threshold"
                                       value={targetValues[kpi.id]?.thresholdValue || ""}
                                       onChange={(e) =>
                                         setTargetValues(prev => ({

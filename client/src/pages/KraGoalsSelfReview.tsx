@@ -352,7 +352,7 @@ export default function KraGoalsSelfReview() {
                           <TableHead>KPI Name</TableHead>
                           <TableHead>Input Type</TableHead>
                           <TableHead>Target</TableHead>
-                          <TableHead>Threshold</TableHead>
+                          <TableHead>Min Threshold</TableHead>
                           <TableHead>Actual Value</TableHead>
                           <TableHead>Pipeline Value</TableHead>
                           <TableHead>Status</TableHead>
