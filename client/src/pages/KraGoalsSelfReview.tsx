@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { Target, Clock, FileText, Send, CheckCircle, AlertCircle, Save } from "lucide-react";
+import { Target, Clock, FileText, Send, CheckCircle, AlertCircle, Save, Square, CheckSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -15,6 +15,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -64,6 +65,7 @@ export default function KraGoalsSelfReview() {
   const { toast } = useToast();
   const [activeCategory, setActiveCategory] = useState<CategoryType>('new');
   const [editValues, setEditValues] = useState<Record<string, { selfRating: string; pipelineValue: string; selfComments: string; pipelineRemarks: string }>>({});
+  const [selectedGoals, setSelectedGoals] = useState<Set<string>>(new Set());
 
   const { data, isLoading } = useQuery<GoalsData>({
     queryKey: ["/api/employee/kra-goal-reviews"],
@@ -99,6 +101,27 @@ export default function KraGoalsSelfReview() {
   });
 
   const filteredGoals = data?.goals.filter(g => g.category === activeCategory) || [];
+  const hasMultiSelect = activeCategory === 'pending' || activeCategory === 'new';
+
+  const getGoalKey = (goal: GoalItem) => `${goal.kpiId}_${goal.periodKey}`;
+
+  const toggleGoalSelection = (goal: GoalItem) => {
+    const key = getGoalKey(goal);
+    setSelectedGoals(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedGoals.size === filteredGoals.length) {
+      setSelectedGoals(new Set());
+    } else {
+      setSelectedGoals(new Set(filteredGoals.map(g => getGoalKey(g))));
+    }
+  };
 
   const groupedByKraPeriod = filteredGoals.reduce<Record<string, { kraCode: string; kraName: string; periodKey: string; periodName: string; periodStart: string; periodEnd: string; reviewFrequency: string; goals: GoalItem[] }>>((acc, goal) => {
     const key = `${goal.kraId}_${goal.periodKey}`;
@@ -120,11 +143,19 @@ export default function KraGoalsSelfReview() {
 
   const getEditKey = (goal: GoalItem) => `${goal.kpiId}_${goal.periodKey}`;
 
+  const getGoalsForAction = () => {
+    if (hasMultiSelect && selectedGoals.size > 0) {
+      return filteredGoals.filter(g => selectedGoals.has(getGoalKey(g)));
+    }
+    return filteredGoals;
+  };
+
   const handleSave = () => {
-    const reviewsToSave = filteredGoals
+    const goalsToProcess = getGoalsForAction();
+    const reviewsToSave = goalsToProcess
       .filter(g => {
         const key = getEditKey(g);
-        return editValues[key];
+        return editValues[key] || selectedGoals.has(getGoalKey(g));
       })
       .map(g => {
         const key = getEditKey(g);
@@ -143,14 +174,19 @@ export default function KraGoalsSelfReview() {
       });
 
     if (reviewsToSave.length === 0) {
-      toast({ title: "Info", description: "No changes to save" });
+      toast({ title: "Info", description: hasMultiSelect ? "Please select goals to save" : "No changes to save" });
       return;
     }
     saveMutation.mutate(reviewsToSave);
   };
 
   const handleSubmit = () => {
-    const allGoals = filteredGoals.map(g => {
+    const goalsToProcess = getGoalsForAction();
+    if (hasMultiSelect && selectedGoals.size === 0) {
+      toast({ title: "Info", description: "Please select goals to submit" });
+      return;
+    }
+    const allGoals = goalsToProcess.map(g => {
       const key = getEditKey(g);
       return {
         kpiTargetId: g.kpiTargetId,
@@ -171,6 +207,7 @@ export default function KraGoalsSelfReview() {
       return;
     }
     submitMutation.mutate(allGoals);
+    setSelectedGoals(new Set());
   };
 
   const cards: { key: CategoryType; label: string; icon: any; color: string }[] = [
@@ -226,7 +263,7 @@ export default function KraGoalsSelfReview() {
             <Card
               key={card.key}
               className={`cursor-pointer transition-all hover:shadow-md ${isActive ? 'ring-2 ring-primary shadow-md' : ''}`}
-              onClick={() => setActiveCategory(card.key)}
+              onClick={() => { setActiveCategory(card.key); setSelectedGoals(new Set()); }}
             >
               <CardContent className="p-4 flex items-center gap-3">
                 <Icon className={`h-8 w-8 ${card.color}`} />
@@ -242,15 +279,28 @@ export default function KraGoalsSelfReview() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <span>{cards.find(c => c.key === activeCategory)?.label}</span>
+          <CardTitle className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-3">
+              <span>{cards.find(c => c.key === activeCategory)?.label}</span>
+              {hasMultiSelect && filteredGoals.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    checked={filteredGoals.length > 0 && selectedGoals.size === filteredGoals.length}
+                    onCheckedChange={toggleSelectAll}
+                  />
+                  <span className="text-sm font-normal text-muted-foreground">
+                    {selectedGoals.size > 0 ? `${selectedGoals.size} of ${filteredGoals.length} selected` : 'Select All'}
+                  </span>
+                </div>
+              )}
+            </div>
             {isEditable && filteredGoals.length > 0 && (
               <div className="flex gap-2">
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={handleSave}
-                  disabled={saveMutation.isPending}
+                  disabled={saveMutation.isPending || (hasMultiSelect && selectedGoals.size === 0)}
                 >
                   <Save className="h-4 w-4 mr-1" />
                   {saveMutation.isPending ? "Saving..." : "Save as Draft"}
@@ -258,7 +308,7 @@ export default function KraGoalsSelfReview() {
                 <Button
                   size="sm"
                   onClick={handleSubmit}
-                  disabled={submitMutation.isPending}
+                  disabled={submitMutation.isPending || (hasMultiSelect && selectedGoals.size === 0)}
                 >
                   <Send className="h-4 w-4 mr-1" />
                   {submitMutation.isPending ? "Submitting..." : "Submit for Approval"}
@@ -290,6 +340,7 @@ export default function KraGoalsSelfReview() {
                     <Table>
                       <TableHeader>
                         <TableRow>
+                          {hasMultiSelect && <TableHead className="w-10"></TableHead>}
                           <TableHead>KPI Code</TableHead>
                           <TableHead>KPI Name</TableHead>
                           <TableHead>Input Type</TableHead>
@@ -322,6 +373,14 @@ export default function KraGoalsSelfReview() {
                           return (
                             <>
                               <TableRow key={`${goal.kpiId}_${goal.periodKey}`}>
+                                {hasMultiSelect && (
+                                  <TableCell>
+                                    <Checkbox
+                                      checked={selectedGoals.has(getGoalKey(goal))}
+                                      onCheckedChange={() => toggleGoalSelection(goal)}
+                                    />
+                                  </TableCell>
+                                )}
                                 <TableCell className="font-medium">{goal.kpiCode}</TableCell>
                                 <TableCell>{goal.kpiName}</TableCell>
                                 <TableCell className="capitalize">{goal.kpiInputType}</TableCell>
@@ -354,7 +413,7 @@ export default function KraGoalsSelfReview() {
                                 <TableCell>{getStatusBadge(goal.status)}</TableCell>
                               </TableRow>
                               <TableRow key={`${goal.kpiId}_${goal.periodKey}_remarks`}>
-                                <TableCell colSpan={8} className="pt-0 pb-1">
+                                <TableCell colSpan={hasMultiSelect ? 9 : 8} className="pt-0 pb-1">
                                   <div className="flex items-start gap-3">
                                     <span className="text-sm font-medium text-muted-foreground whitespace-nowrap w-48 shrink-0 mt-2">Remarks for Actual Value:</span>
                                     {isEditable ? (
@@ -371,7 +430,7 @@ export default function KraGoalsSelfReview() {
                                 </TableCell>
                               </TableRow>
                               <TableRow key={`${goal.kpiId}_${goal.periodKey}_pipeline_remarks`} className="border-b">
-                                <TableCell colSpan={8} className="pt-0 pb-3">
+                                <TableCell colSpan={hasMultiSelect ? 9 : 8} className="pt-0 pb-3">
                                   <div className="flex items-start gap-3">
                                     <span className="text-sm font-medium text-muted-foreground whitespace-nowrap w-48 shrink-0 mt-2">Remarks for Pipeline Value:</span>
                                     {isEditable ? (
