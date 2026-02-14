@@ -6837,7 +6837,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           kpiInputType: kpi?.inputType || '',
           kpiWeightage: kpi?.weightageContribution || 0,
           kraCode: kra?.code || '',
-          kraName: kra?.name || '',
+          kraName: kra?.displayName || '',
           reviewFrequency: reviewFreq?.description || reviewFreq?.code || '',
           targetValue: kpiTarget?.targetValue || '',
           thresholdValue: kpiTarget?.thresholdValue || '',
