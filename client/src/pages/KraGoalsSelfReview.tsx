@@ -333,7 +333,7 @@ export default function KraGoalsSelfReview() {
                                       placeholder={goal.kpiInputType || "Value"}
                                       value={selfRating}
                                       onChange={(e) => updateEdit('selfRating', e.target.value)}
-                                      className="w-24 text-right"
+                                      className="w-28 text-right"
                                     />
                                   ) : (
                                     <span>{goal.selfRating || '-'}</span>
@@ -345,7 +345,7 @@ export default function KraGoalsSelfReview() {
                                       placeholder={goal.kpiInputType || "Value"}
                                       value={pipelineValue}
                                       onChange={(e) => updateEdit('pipelineValue', e.target.value)}
-                                      className="w-24 text-right"
+                                      className="w-28 text-right"
                                     />
                                   ) : (
                                     <span>{goal.pipelineValue || '-'}</span>
@@ -355,14 +355,14 @@ export default function KraGoalsSelfReview() {
                               </TableRow>
                               <TableRow key={`${goal.kpiId}_${goal.periodKey}_remarks`}>
                                 <TableCell colSpan={8} className="pt-0 pb-1">
-                                  <div className="flex items-start gap-2">
-                                    <span className="text-sm font-medium text-muted-foreground whitespace-nowrap mt-1">Remarks for Actual Value:</span>
+                                  <div className="flex items-center gap-3">
+                                    <span className="text-sm font-medium text-muted-foreground whitespace-nowrap w-52 text-right">Remarks for Actual Value:</span>
                                     {isEditable ? (
                                       <Textarea
                                         placeholder="Enter remarks for actual value..."
                                         value={selfComments}
                                         onChange={(e) => updateEdit('selfComments', e.target.value)}
-                                        className="flex-1 h-8 min-h-8 text-sm"
+                                        className="flex-1 min-h-[60px] text-sm"
                                       />
                                     ) : (
                                       <span className="text-sm">{goal.selfComments || '-'}</span>
@@ -372,14 +372,14 @@ export default function KraGoalsSelfReview() {
                               </TableRow>
                               <TableRow key={`${goal.kpiId}_${goal.periodKey}_pipeline_remarks`} className="border-b">
                                 <TableCell colSpan={8} className="pt-0 pb-3">
-                                  <div className="flex items-start gap-2">
-                                    <span className="text-sm font-medium text-muted-foreground whitespace-nowrap mt-1">Remarks for Pipeline Value:</span>
+                                  <div className="flex items-center gap-3">
+                                    <span className="text-sm font-medium text-muted-foreground whitespace-nowrap w-52 text-right">Remarks for Pipeline Value:</span>
                                     {isEditable ? (
                                       <Textarea
                                         placeholder="Enter remarks for pipeline value..."
                                         value={pipelineRemarks}
                                         onChange={(e) => updateEdit('pipelineRemarks', e.target.value)}
-                                        className="flex-1 h-8 min-h-8 text-sm"
+                                        className="flex-1 min-h-[60px] text-sm"
                                       />
                                     ) : (
                                       <span className="text-sm">{goal.pipelineRemarks || '-'}</span>
