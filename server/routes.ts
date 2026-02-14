@@ -6781,11 +6781,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const allUsers = await storage.getUsers({});
       const userMap = new Map(allUsers.map(u => [u.id, u]));
 
-      const allKpis = await storage.getKpis();
-      const kpiMap = new Map(allKpis.map(k => [k.id, k]));
-
-      const allKras = await storage.getKras();
-      const kraMap = new Map(allKras.map(k => [k.id, k]));
+      const uniqueKraIds = [...new Set(reviews.map(r => r.kraId).filter(Boolean))];
+      const kraMap = new Map<string, any>();
+      const kpiMap = new Map<string, any>();
+      for (const kraId of uniqueKraIds) {
+        const kra = await storage.getKraById(kraId);
+        if (kra) {
+          kraMap.set(kraId, kra);
+          const kraKpis = await storage.getKpisByKraId(kraId);
+          for (const kpi of kraKpis) {
+            kpiMap.set(kpi.id, kpi);
+          }
+        }
+      }
 
       const enrichedReviews = reviews.map(r => {
         const employee = userMap.get(r.employeeId);
