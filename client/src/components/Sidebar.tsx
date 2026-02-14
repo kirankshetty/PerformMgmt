@@ -89,11 +89,9 @@ export function Sidebar() {
     enabled: !!user,
   });
 
-  const availableRoles: string[] = (user as any)?.availableRoles || [(user as any)?.role || "employee"];
-
   const filteredNavItems = navItems.filter((item) => {
     if (!item.roles) return true;
-    return item.roles.some((r: string) => availableRoles.includes(r));
+    return item.roles.includes(activeRole);
   });
 
   return (

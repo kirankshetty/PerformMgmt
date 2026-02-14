@@ -184,9 +184,8 @@ export const requireRoles = (allowedRoles: string[]): RequestHandler => {
         return res.status(403).json({ message: "Access forbidden - invalid active role" });
       }
 
-      // Check if ANY of the user's available roles matches the allowed roles for this endpoint
-      const hasAllowedRole = availableRoles.some((r: string) => allowedRoles.includes(r));
-      if (!hasAllowedRole) {
+      // Check if the active role is in the allowed roles for this endpoint
+      if (!allowedRoles.includes(activeRole)) {
         return res.status(403).json({ message: "Access forbidden - insufficient permissions" });
       }
 
