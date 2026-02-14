@@ -6289,9 +6289,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       for (const kra of kraList) {
         if (kra.status !== 'active') continue;
         const kpiList = await storage.getKpisByKraId(kra.id);
+        const kraReviewFrequencyName = kra.reviewFrequencyId ? (reviewFreqMap[kra.reviewFrequencyId] || '') : '';
         const activeKpis = kpiList.filter(k => k.status === 'active').map(kpi => ({
           ...kpi,
-          reviewFrequencyName: kpi.reviewFrequencyId ? (reviewFreqMap[kpi.reviewFrequencyId] || '') : '',
+          reviewFrequencyName: kraReviewFrequencyName,
         }));
         if (activeKpis.length > 0) {
           krasWithKpis.push({ ...kra, kpis: activeKpis });
