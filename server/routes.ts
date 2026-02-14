@@ -6280,11 +6280,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const kraList = await storage.getKras(kraOwnerId);
+      const reviewFreqList = await storage.getReviewFrequencies(kraOwnerId);
+      const reviewFreqMap: Record<string, string> = {};
+      for (const rf of reviewFreqList) {
+        reviewFreqMap[rf.id] = rf.name;
+      }
       const krasWithKpis = [];
       for (const kra of kraList) {
         if (kra.status !== 'active') continue;
         const kpiList = await storage.getKpisByKraId(kra.id);
-        const activeKpis = kpiList.filter(k => k.status === 'active');
+        const activeKpis = kpiList.filter(k => k.status === 'active').map(kpi => ({
+          ...kpi,
+          reviewFrequencyName: kpi.reviewFrequencyId ? (reviewFreqMap[kpi.reviewFrequencyId] || '') : '',
+        }));
         if (activeKpis.length > 0) {
           krasWithKpis.push({ ...kra, kpis: activeKpis });
         }

@@ -167,6 +167,8 @@ export default function SetTargetsKraGoals() {
       queryClient.invalidateQueries({ queryKey: ["/api/manager/targets", selectedEmployeeId] });
       queryClient.invalidateQueries({ queryKey: ["/api/manager/target-members"] });
       toast({ title: "Success", description: "Targets saved successfully" });
+      setIsTargetDialogOpen(false);
+      setSelectedEmployeeId(null);
     },
     onError: (error: any) => {
       toast({ title: "Error", description: error.message || "Failed to save targets", variant: "destructive" });
@@ -624,6 +626,8 @@ export default function SetTargetsKraGoals() {
                             <TableRow>
                               <TableHead>KPI Code</TableHead>
                               <TableHead>KPI Name</TableHead>
+                              <TableHead>Review Frequency</TableHead>
+                              <TableHead>Input Type</TableHead>
                               <TableHead>Weightage</TableHead>
                               <TableHead>Target Value</TableHead>
                               <TableHead>Threshold Value</TableHead>
@@ -637,6 +641,8 @@ export default function SetTargetsKraGoals() {
                                 <TableRow key={kpi.id}>
                                   <TableCell className="font-medium">{kpi.code}</TableCell>
                                   <TableCell>{kpi.name}</TableCell>
+                                  <TableCell>{kpi.reviewFrequencyName || '-'}</TableCell>
+                                  <TableCell className="capitalize">{kpi.inputType || '-'}</TableCell>
                                   <TableCell>{kpi.weightageContribution}%</TableCell>
                                   <TableCell>
                                     <Input
