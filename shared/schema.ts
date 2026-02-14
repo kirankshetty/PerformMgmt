@@ -1456,3 +1456,5 @@ export const insertKraGoalReviewSchema = createInsertSchema(kraGoalReviews).omit
 
 export type KraGoalReview = typeof kraGoalReviews.$inferSelect;
 export type InsertKraGoalReview = z.infer<typeof insertKraGoalReviewSchema>;
+
+export * from "./models/chat";
