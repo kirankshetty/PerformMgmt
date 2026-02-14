@@ -308,7 +308,7 @@ export default function ManagerKraGoalsReview() {
   }
 
   if (selectedEmployee) {
-    const selectedEmp = employeeSummaries.find(e => e.employeeId === selectedEmployee);
+    const selectedEmpReview = reviews?.find(r => r.employeeId === selectedEmployee);
     return (
       <div className="p-6 space-y-6">
         <div className="flex items-center gap-3">
@@ -318,12 +318,27 @@ export default function ManagerKraGoalsReview() {
           </Button>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Target className="h-6 w-6" />
-            KRAs/Goals Review — {selectedEmp?.employeeName}
+            KRAs/Goals Review — {selectedEmpReview?.employeeName}
           </h1>
         </div>
-        <p className="text-sm text-muted-foreground">
-          Employee Code: {selectedEmp?.employeeCode} | Email: {selectedEmp?.employeeEmail}
-        </p>
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
+          <span className="flex items-center gap-1.5">
+            <User className="h-4 w-4" />
+            <span className="font-medium text-foreground">{selectedEmpReview?.employeeCode}</span> — {selectedEmpReview?.employeeName}
+          </span>
+          {selectedEmpReview?.employeeLocation && (
+            <span className="flex items-center gap-1.5">
+              <MapPin className="h-4 w-4" />
+              {selectedEmpReview.employeeLocation}
+            </span>
+          )}
+          {selectedEmpReview?.employeeDepartment && (
+            <span className="flex items-center gap-1.5">
+              <Building className="h-4 w-4" />
+              {selectedEmpReview.employeeDepartment}
+            </span>
+          )}
+        </div>
 
         <Card>
           <CardHeader className="pb-3">
