@@ -6773,7 +6773,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Manager KRA/Goals Review endpoints
-  app.get('/api/manager/kra-goal-reviews', isAuthenticated, requireRoles(['manager']), async (req: any, res) => {
+  app.get('/api/manager/kra-goal-reviews', isAuthenticated, requireRoles(['manager', 'employee']), async (req: any, res) => {
     try {
       const managerId = req.user.claims.sub;
       const reviews = await storage.getSubmittedKraGoalReviewsForManager(managerId);
@@ -6811,7 +6811,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/manager/kra-goal-reviews/:id/review', isAuthenticated, requireRoles(['manager']), async (req: any, res) => {
+  app.post('/api/manager/kra-goal-reviews/:id/review', isAuthenticated, requireRoles(['manager', 'employee']), async (req: any, res) => {
     try {
       const managerId = req.user.claims.sub;
       const reviewId = req.params.id;
