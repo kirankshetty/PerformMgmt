@@ -56,7 +56,7 @@ For testing HR Manager functionality:
 - **Administrator**: User management, location setup, questionnaire configuration, email service setup.
 - **HR Manager**: Review cycle initiation, progress monitoring, evaluation oversight.
 - **Employee**: Self-evaluation, document export, meeting scheduling.
-- **Manager**: Team member evaluation, review approval, meeting coordination.
+- **Manager**: Team member evaluation, review approval, meeting coordination, KPI target setting for KRA/Goals.
 
 ### Key Features
 - **Email Integration**: Configurable SMTP, automated notifications (invitations, reminders, completion, employee submission alerts), calendar invite generation. When an employee submits their self-evaluation, the system automatically sends an email notification to their manager with CC to all HR managers for the company. Performance Review Completion emails include Employee Code, Employee Name, Employee Email ID, Final Rating, Meeting Completed On date, Meeting Notes (with visibility control), and Manager information. Meeting notes are only shown to employees if the manager explicitly enables the "Show notes to employee" option.

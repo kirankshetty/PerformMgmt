@@ -33,6 +33,7 @@ import {
   scheduledAppraisalTasks,
   developmentGoals,
   feedbackRequests,
+  kpiTargets,
   type User,
   type SafeUser,
   type UpsertUser,
@@ -101,6 +102,8 @@ import {
   type FeedbackRequest,
   type InsertFeedbackRequest,
   type SubmitFeedback,
+  type KpiTarget,
+  type InsertKpiTarget,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, asc, like, inArray, or, sql, isNotNull } from "drizzle-orm";
@@ -335,6 +338,12 @@ export interface IStorage {
   getFeedbackRequest(id: string): Promise<FeedbackRequest | undefined>;
   createFeedbackRequest(request: InsertFeedbackRequest): Promise<FeedbackRequest>;
   submitFeedbackRequest(id: string, reviewerId: string, feedback: SubmitFeedback): Promise<FeedbackRequest>;
+
+  getKpiTargetsByEmployee(employeeId: string): Promise<KpiTarget[]>;
+  getKpiTargetsByManager(managerId: string): Promise<KpiTarget[]>;
+  upsertKpiTarget(target: InsertKpiTarget): Promise<KpiTarget>;
+  deleteKpiTarget(id: string): Promise<void>;
+  deleteKpiTargetsByEmployee(employeeId: string, managerId: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3142,6 +3151,51 @@ export class DatabaseStorage implements IStorage {
       .where(eq(feedbackRequests.id, id))
       .returning();
     return updated;
+  }
+
+  async getKpiTargetsByEmployee(employeeId: string): Promise<KpiTarget[]> {
+    return await db.select().from(kpiTargets).where(eq(kpiTargets.employeeId, employeeId));
+  }
+
+  async getKpiTargetsByManager(managerId: string): Promise<KpiTarget[]> {
+    return await db.select().from(kpiTargets).where(eq(kpiTargets.setByManagerId, managerId));
+  }
+
+  async upsertKpiTarget(target: InsertKpiTarget): Promise<KpiTarget> {
+    const existing = await db.select().from(kpiTargets).where(
+      and(
+        eq(kpiTargets.employeeId, target.employeeId),
+        eq(kpiTargets.kpiId, target.kpiId)
+      )
+    );
+
+    if (existing.length > 0) {
+      const [updated] = await db.update(kpiTargets)
+        .set({
+          targetValue: target.targetValue,
+          thresholdValue: target.thresholdValue,
+          updatedAt: new Date(),
+        })
+        .where(eq(kpiTargets.id, existing[0].id))
+        .returning();
+      return updated;
+    }
+
+    const [created] = await db.insert(kpiTargets).values(target).returning();
+    return created;
+  }
+
+  async deleteKpiTarget(id: string): Promise<void> {
+    await db.delete(kpiTargets).where(eq(kpiTargets.id, id));
+  }
+
+  async deleteKpiTargetsByEmployee(employeeId: string, managerId: string): Promise<void> {
+    await db.delete(kpiTargets).where(
+      and(
+        eq(kpiTargets.employeeId, employeeId),
+        eq(kpiTargets.setByManagerId, managerId)
+      )
+    );
   }
 }
 

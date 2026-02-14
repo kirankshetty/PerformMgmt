@@ -1325,3 +1325,48 @@ export const submitFeedbackSchema = z.object({
 export type FeedbackRequest = typeof feedbackRequests.$inferSelect;
 export type InsertFeedbackRequest = z.infer<typeof insertFeedbackRequestSchema>;
 export type SubmitFeedback = z.infer<typeof submitFeedbackSchema>;
+
+export const kpiTargets = pgTable("kpi_targets", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  employeeId: varchar("employee_id").notNull(),
+  kpiId: varchar("kpi_id").notNull(),
+  kraId: varchar("kra_id").notNull(),
+  targetValue: varchar("target_value").notNull(),
+  thresholdValue: varchar("threshold_value"),
+  setByManagerId: varchar("set_by_manager_id").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("kpi_targets_employee_id_idx").on(table.employeeId),
+  index("kpi_targets_kpi_id_idx").on(table.kpiId),
+  index("kpi_targets_manager_id_idx").on(table.setByManagerId),
+  unique().on(table.employeeId, table.kpiId),
+]);
+
+export const kpiTargetsRelations = relations(kpiTargets, ({ one }) => ({
+  employee: one(users, {
+    fields: [kpiTargets.employeeId],
+    references: [users.id],
+  }),
+  kpi: one(kpis, {
+    fields: [kpiTargets.kpiId],
+    references: [kpis.id],
+  }),
+  kra: one(kras, {
+    fields: [kpiTargets.kraId],
+    references: [kras.id],
+  }),
+  manager: one(users, {
+    fields: [kpiTargets.setByManagerId],
+    references: [users.id],
+  }),
+}));
+
+export const insertKpiTargetSchema = createInsertSchema(kpiTargets).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type KpiTarget = typeof kpiTargets.$inferSelect;
+export type InsertKpiTarget = z.infer<typeof insertKpiTargetSchema>;

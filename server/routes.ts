@@ -6179,6 +6179,216 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Manager KPI Target routes
+
+  app.get('/api/manager/target-members', isAuthenticated, requireRoles(['manager']), async (req: any, res) => {
+    try {
+      const managerId = req.user.claims.sub;
+      const allUsers = await storage.getUsers({}, managerId);
+      const directReports = allUsers.filter(u => u.reportingManagerId === managerId && u.status === 'active');
+
+      const { nameOrCode, location, department, level, grade, businessRole, dojFromDate, dojTillDate } = req.query;
+
+      let filtered = directReports;
+
+      if (nameOrCode) {
+        const search = (nameOrCode as string).toLowerCase();
+        filtered = filtered.filter(u =>
+          `${u.firstName} ${u.lastName}`.toLowerCase().includes(search) ||
+          (u.code && u.code.toLowerCase().includes(search))
+        );
+      }
+      if (location) {
+        const locs = (location as string).split(',');
+        filtered = filtered.filter(u => u.locationId && locs.includes(u.locationId));
+      }
+      if (department) {
+        const depts = (department as string).split(',');
+        filtered = filtered.filter(u => u.department && depts.includes(u.department));
+      }
+      if (level) {
+        const lvls = (level as string).split(',');
+        filtered = filtered.filter(u => u.levelId && lvls.includes(u.levelId));
+      }
+      if (grade) {
+        const grds = (grade as string).split(',');
+        filtered = filtered.filter(u => u.gradeId && grds.includes(u.gradeId));
+      }
+      if (businessRole) {
+        const roles = (businessRole as string).split(',');
+        filtered = filtered.filter(u => u.businessRoleId && roles.includes(u.businessRoleId));
+      }
+      if (dojFromDate) {
+        const from = new Date(dojFromDate as string);
+        filtered = filtered.filter(u => u.dateOfJoining && new Date(u.dateOfJoining) >= from);
+      }
+      if (dojTillDate) {
+        const till = new Date(dojTillDate as string);
+        filtered = filtered.filter(u => u.dateOfJoining && new Date(u.dateOfJoining) <= till);
+      }
+
+      const allTargets = await storage.getKpiTargetsByManager(managerId);
+      const targetCountByEmployee: Record<string, number> = {};
+      for (const t of allTargets) {
+        targetCountByEmployee[t.employeeId] = (targetCountByEmployee[t.employeeId] || 0) + 1;
+      }
+
+      const membersWithTargetInfo = filtered.map(u => ({
+        id: u.id,
+        firstName: u.firstName,
+        lastName: u.lastName,
+        email: u.email,
+        code: u.code,
+        designation: u.designation,
+        department: u.department,
+        locationId: u.locationId,
+        levelId: u.levelId,
+        gradeId: u.gradeId,
+        businessRoleId: u.businessRoleId,
+        dateOfJoining: u.dateOfJoining,
+        targetCount: targetCountByEmployee[u.id] || 0,
+      }));
+
+      res.json(membersWithTargetInfo);
+    } catch (error: any) {
+      console.error("Error fetching target members:", error);
+      res.status(500).json({ message: "Failed to fetch target members" });
+    }
+  });
+
+  app.get('/api/manager/targets/:employeeId', isAuthenticated, requireRoles(['manager']), async (req: any, res) => {
+    try {
+      const managerId = req.user.claims.sub;
+      const { employeeId } = req.params;
+
+      const allUsers = await storage.getUsers({}, managerId);
+      const employee = allUsers.find(u => u.id === employeeId);
+      if (!employee || employee.reportingManagerId !== managerId) {
+        return res.status(403).json({ message: "Access denied: Employee is not your direct report" });
+      }
+
+      const manager = await storage.getUser(managerId);
+      if (!manager) {
+        return res.status(404).json({ message: "Manager not found" });
+      }
+      let kraOwnerId = managerId;
+      if (manager.companyId) {
+        const companyAdmins = await storage.getUsers({ role: 'admin', companyId: manager.companyId });
+        if (companyAdmins && companyAdmins.length > 0) {
+          kraOwnerId = companyAdmins[0].id;
+        }
+      }
+
+      const kraList = await storage.getKras(kraOwnerId);
+      const krasWithKpis = [];
+      for (const kra of kraList) {
+        if (kra.status !== 'active') continue;
+        const kpiList = await storage.getKpisByKraId(kra.id);
+        const activeKpis = kpiList.filter(k => k.status === 'active');
+        if (activeKpis.length > 0) {
+          krasWithKpis.push({ ...kra, kpis: activeKpis });
+        }
+      }
+
+      const existingTargets = await storage.getKpiTargetsByEmployee(employeeId);
+      const targetMap: Record<string, any> = {};
+      for (const t of existingTargets) {
+        targetMap[t.kpiId] = t;
+      }
+
+      res.json({
+        employee: {
+          id: employee.id,
+          firstName: employee.firstName,
+          lastName: employee.lastName,
+          email: employee.email,
+          code: employee.code,
+        },
+        kras: krasWithKpis,
+        existingTargets: targetMap,
+      });
+    } catch (error: any) {
+      console.error("Error fetching targets:", error);
+      res.status(500).json({ message: "Failed to fetch targets" });
+    }
+  });
+
+  app.post('/api/manager/targets', isAuthenticated, requireRoles(['manager']), async (req: any, res) => {
+    try {
+      const managerId = req.user.claims.sub;
+      const { employeeId, targets } = req.body;
+
+      if (!employeeId || !targets || !Array.isArray(targets)) {
+        return res.status(400).json({ message: "Invalid request: employeeId and targets array required" });
+      }
+
+      const allUsers = await storage.getUsers({}, managerId);
+      const employee = allUsers.find(u => u.id === employeeId);
+      if (!employee || employee.reportingManagerId !== managerId) {
+        return res.status(403).json({ message: "Access denied: Employee is not your direct report" });
+      }
+
+      const savedTargets = [];
+      for (const target of targets) {
+        if (!target.kpiId || !target.kraId || !target.targetValue) {
+          continue;
+        }
+        const saved = await storage.upsertKpiTarget({
+          employeeId,
+          kpiId: target.kpiId,
+          kraId: target.kraId,
+          targetValue: target.targetValue,
+          thresholdValue: target.thresholdValue || null,
+          setByManagerId: managerId,
+        });
+        savedTargets.push(saved);
+      }
+
+      res.json({ message: `Saved ${savedTargets.length} target(s)`, targets: savedTargets });
+    } catch (error: any) {
+      console.error("Error saving targets:", error);
+      res.status(500).json({ message: "Failed to save targets" });
+    }
+  });
+
+  app.delete('/api/manager/targets/:targetId', isAuthenticated, requireRoles(['manager']), async (req: any, res) => {
+    try {
+      const managerId = req.user.claims.sub;
+      const { targetId } = req.params;
+
+      const allTargets = await storage.getKpiTargetsByManager(managerId);
+      const target = allTargets.find(t => t.id === targetId);
+      if (!target) {
+        return res.status(404).json({ message: "Target not found" });
+      }
+
+      await storage.deleteKpiTarget(targetId);
+      res.json({ message: "Target deleted successfully" });
+    } catch (error: any) {
+      console.error("Error deleting target:", error);
+      res.status(500).json({ message: "Failed to delete target" });
+    }
+  });
+
+  app.delete('/api/manager/targets/employee/:employeeId', isAuthenticated, requireRoles(['manager']), async (req: any, res) => {
+    try {
+      const managerId = req.user.claims.sub;
+      const { employeeId } = req.params;
+
+      const allUsers = await storage.getUsers({}, managerId);
+      const employee = allUsers.find(u => u.id === employeeId);
+      if (!employee || employee.reportingManagerId !== managerId) {
+        return res.status(403).json({ message: "Access denied: Employee is not your direct report" });
+      }
+
+      await storage.deleteKpiTargetsByEmployee(employeeId, managerId);
+      res.json({ message: "All targets deleted for employee" });
+    } catch (error: any) {
+      console.error("Error deleting targets for employee:", error);
+      res.status(500).json({ message: "Failed to delete targets" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
