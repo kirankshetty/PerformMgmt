@@ -356,7 +356,7 @@ export default function KraGoalsSelfReview() {
                               <TableRow key={`${goal.kpiId}_${goal.periodKey}_remarks`}>
                                 <TableCell colSpan={8} className="pt-0 pb-1">
                                   <div className="flex items-center gap-3">
-                                    <span className="text-sm font-medium text-muted-foreground whitespace-nowrap w-52 text-right">Remarks for Actual Value:</span>
+                                    <span className="text-sm font-medium text-muted-foreground whitespace-nowrap">Remarks for Actual Value:</span>
                                     {isEditable ? (
                                       <Textarea
                                         placeholder="Enter remarks for actual value..."
@@ -373,7 +373,7 @@ export default function KraGoalsSelfReview() {
                               <TableRow key={`${goal.kpiId}_${goal.periodKey}_pipeline_remarks`} className="border-b">
                                 <TableCell colSpan={8} className="pt-0 pb-3">
                                   <div className="flex items-center gap-3">
-                                    <span className="text-sm font-medium text-muted-foreground whitespace-nowrap w-52 text-right">Remarks for Pipeline Value:</span>
+                                    <span className="text-sm font-medium text-muted-foreground whitespace-nowrap">Remarks for Pipeline Value:</span>
                                     {isEditable ? (
                                       <Textarea
                                         placeholder="Enter remarks for pipeline value..."
