@@ -9,6 +9,19 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RoleGuard } from "@/components/RoleGuard";
 
+interface TrendRow {
+  kpi: string;
+  kpiCode: string;
+  frequency: string;
+  period: string;
+  target: number;
+  actual: number;
+  prevPeriod1: number;
+  prevPeriod2: number;
+  prevPeriod3: number;
+  pipeline: number;
+}
+
 export default function ReportTrend() {
   const [fromDate, setFromDate] = useState(() => {
     const d = new Date();
@@ -91,28 +104,22 @@ export default function ReportTrend() {
     setAppliedParams(params.toString());
   };
 
-  const { data, isLoading } = useQuery<{ periods: any[]; employees: any[] }>({
+  const { data, isLoading } = useQuery<TrendRow[]>({
     queryKey: ['/api/reports/trend', appliedParams],
-    queryFn: () => fetch(`/api/reports/trend?${appliedParams}`).then(r => r.json()),
+    queryFn: () => fetch(`/api/reports/trend?${appliedParams}`).then(r => r.json()).then(d => Array.isArray(d) ? d : []),
     enabled: !!fromDate && !!toDate,
   });
 
-  const monthlySummary = data?.periods || [];
-  const employeeTrends = (data?.employees || []).map((emp: any) => {
-    const ratingsMap: Record<string, number | null> = {};
-    for (const r of emp.ratings || []) {
-      ratingsMap[r.period] = r.overallRating;
-    }
-    return { ...emp, ratingsMap };
-  });
-  const periods = monthlySummary.map((s: any) => s.period);
+  const formatNumber = (val: number) => {
+    return val.toLocaleString();
+  };
 
   return (
     <RoleGuard allowedRoles={["manager"]}>
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-semibold">Trend Report</h1>
-          <p className="text-muted-foreground">Analyze performance trends over time</p>
+          <p className="text-muted-foreground">Weekly KPI trends with previous period comparisons</p>
         </div>
 
         <Card>
@@ -221,14 +228,14 @@ export default function ReportTrend() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Monthly Summary</CardTitle>
+            <CardTitle>KPI Trend</CardTitle>
           </CardHeader>
           <CardContent>
             {isLoading ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
               </div>
-            ) : monthlySummary.length === 0 ? (
+            ) : !data || data.length === 0 ? (
               <div className="text-center py-12">
                 <p className="text-muted-foreground">No data found</p>
               </div>
@@ -237,63 +244,29 @@ export default function ReportTrend() {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead>Kpi</TableHead>
+                      <TableHead>Frequency</TableHead>
                       <TableHead>Period</TableHead>
-                      <TableHead>Total Evaluations</TableHead>
-                      <TableHead>Completed</TableHead>
-                      <TableHead>Avg Overall Rating</TableHead>
-                      <TableHead>Avg Calibrated Rating</TableHead>
+                      <TableHead className="text-right">Target</TableHead>
+                      <TableHead className="text-right">Actual</TableHead>
+                      <TableHead className="text-right">ACTUAL - PREV PERIOD 1</TableHead>
+                      <TableHead className="text-right">ACTUAL - PREV PERIOD 2</TableHead>
+                      <TableHead className="text-right">ACTUAL - PREV PERIOD 3</TableHead>
+                      <TableHead className="text-right">Pipeline</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {monthlySummary.map((row: any, index: number) => (
+                    {data.map((row, index) => (
                       <TableRow key={index}>
-                        <TableCell className="font-medium">{row.period}</TableCell>
-                        <TableCell>{row.totalEvaluations ?? 0}</TableCell>
-                        <TableCell>{row.completedEvaluations ?? 0}</TableCell>
-                        <TableCell>{row.averageOverallRating != null ? Number(row.averageOverallRating).toFixed(2) : '-'}</TableCell>
-                        <TableCell>{row.averageCalibratedRating != null ? Number(row.averageCalibratedRating).toFixed(2) : '-'}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Employee Trends</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-              </div>
-            ) : employeeTrends.length === 0 ? (
-              <div className="text-center py-12">
-                <p className="text-muted-foreground">No data found</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Employee Code</TableHead>
-                      <TableHead>Employee Name</TableHead>
-                      {periods.map((period: string) => (
-                        <TableHead key={period}>{period}</TableHead>
-                      ))}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {employeeTrends.map((row: any, index: number) => (
-                      <TableRow key={index}>
-                        <TableCell className="font-medium">{row.employeeCode || '-'}</TableCell>
-                        <TableCell>{row.employeeName || '-'}</TableCell>
-                        {periods.map((period: string) => (
-                          <TableCell key={period}>{row.ratingsMap?.[period] ?? '-'}</TableCell>
-                        ))}
+                        <TableCell className="font-medium max-w-[160px] truncate" title={row.kpi}>{row.kpi}</TableCell>
+                        <TableCell>{row.frequency}</TableCell>
+                        <TableCell className="whitespace-nowrap">{row.period}</TableCell>
+                        <TableCell className="text-right">{formatNumber(row.target)}</TableCell>
+                        <TableCell className="text-right">{formatNumber(row.actual)}</TableCell>
+                        <TableCell className="text-right">{formatNumber(row.prevPeriod1)}</TableCell>
+                        <TableCell className="text-right">{formatNumber(row.prevPeriod2)}</TableCell>
+                        <TableCell className="text-right">{formatNumber(row.prevPeriod3)}</TableCell>
+                        <TableCell className="text-right">{formatNumber(row.pipeline)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>

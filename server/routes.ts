@@ -7384,19 +7384,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let members: any[];
 
       if (scope === 'all') {
-        const memberIds = new Set<string>();
+        const mIds = new Set<string>();
         const queue = allUsers.filter(u => u.reportingManagerId === managerId).map(u => u.id);
         while (queue.length > 0) {
           const current = queue.shift()!;
-          if (!memberIds.has(current)) {
-            memberIds.add(current);
+          if (!mIds.has(current)) {
+            mIds.add(current);
             const subordinates = allUsers.filter(u => u.reportingManagerId === current);
             for (const sub of subordinates) {
               queue.push(sub.id);
             }
           }
         }
-        members = allUsers.filter(u => memberIds.has(u.id));
+        members = allUsers.filter(u => mIds.has(u.id));
       } else {
         members = allUsers.filter(u => u.reportingManagerId === managerId);
       }
@@ -7426,84 +7426,142 @@ export async function registerRoutes(app: Express): Promise<Server> {
         members = members.filter(u => empIds.includes(u.id));
       }
 
-      const memberIds = new Set(members.map(m => m.id));
-      const allEvaluations = await storage.getEvaluations();
-      const filtered = allEvaluations.filter(e =>
-        memberIds.has(e.employeeId) &&
-        e.createdAt && new Date(e.createdAt) >= from &&
-        e.createdAt && new Date(e.createdAt) <= to
+      const memberIds = members.map(m => m.id);
+      if (memberIds.length === 0) {
+        return res.json([]);
+      }
+
+      const allTargets = await db.select().from(kpiTargets).where(
+        inArray(kpiTargets.employeeId, memberIds)
       );
 
-      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      const monthMap = new Map<string, any[]>();
-
-      for (const ev of filtered) {
-        const d = new Date(ev.createdAt!);
-        const key = `${monthNames[d.getMonth()]} ${d.getFullYear()}`;
-        if (!monthMap.has(key)) {
-          monthMap.set(key, []);
-        }
-        monthMap.get(key)!.push(ev);
+      if (allTargets.length === 0) {
+        return res.json([]);
       }
 
-      const memberMap = new Map(members.map(m => [m.id, m]));
+      const kpiIds = [...new Set(allTargets.map(t => t.kpiId))];
+      const kraIds = [...new Set(allTargets.map(t => t.kraId))];
 
-      const periods = Array.from(monthMap.entries())
-        .sort((a, b) => {
-          const evA = a[1][0];
-          const evB = b[1][0];
-          return new Date(evA.createdAt!).getTime() - new Date(evB.createdAt!).getTime();
-        })
-        .map(([period, evals]) => {
-          const overallRatings = evals.filter(e => e.overallRating != null).map(e => e.overallRating as number);
-          const calibratedRatings = evals.filter(e => e.calibratedRating != null).map(e => e.calibratedRating as number);
-          const d = new Date(evals[0].createdAt!);
-          const periodStart = new Date(d.getFullYear(), d.getMonth(), 1).toISOString();
+      const allKpis = kpiIds.length > 0 ? await db.select().from(kpis).where(inArray(kpis.id, kpiIds)) : [];
+      const allKras = kraIds.length > 0 ? await db.select().from(kras).where(inArray(kras.id, kraIds)) : [];
 
-          return {
-            period,
-            periodStart,
-            averageOverallRating: overallRatings.length > 0 ? Number((overallRatings.reduce((a, b) => a + b, 0) / overallRatings.length).toFixed(2)) : 0,
-            averageCalibratedRating: calibratedRatings.length > 0 ? Number((calibratedRatings.reduce((a, b) => a + b, 0) / calibratedRatings.length).toFixed(2)) : 0,
-            totalEvaluations: evals.length,
-            completedEvaluations: evals.filter(e => e.status === 'completed').length,
-            employeeScores: evals.map(e => {
-              const emp = memberMap.get(e.employeeId);
-              return {
-                employeeId: e.employeeId,
-                employeeName: emp ? `${emp.firstName || ''} ${emp.lastName || ''}`.trim() : '',
-                employeeCode: emp?.code || '',
-                overallRating: e.overallRating,
-                calibratedRating: e.calibratedRating,
-              };
-            }),
-          };
-        });
+      const kraFreqIds = [...new Set(allKras.map(k => k.reviewFrequencyId).filter(Boolean))];
+      const allFreqs = kraFreqIds.length > 0 ? await db.select().from(reviewFrequencies).where(inArray(reviewFrequencies.id, kraFreqIds as string[])) : [];
 
-      const employeeTrendMap = new Map<string, any>();
-      for (const [period, evals] of monthMap.entries()) {
-        for (const ev of evals) {
-          if (!employeeTrendMap.has(ev.employeeId)) {
-            const emp = memberMap.get(ev.employeeId);
-            employeeTrendMap.set(ev.employeeId, {
-              employeeId: ev.employeeId,
-              employeeName: emp ? `${emp.firstName || ''} ${emp.lastName || ''}`.trim() : '',
-              employeeCode: emp?.code || '',
-              ratings: [],
-            });
+      const kpiMap = new Map(allKpis.map(k => [k.id, k]));
+      const kraMap = new Map(allKras.map(k => [k.id, k]));
+      const freqMap = new Map(allFreqs.map(f => [f.id, f]));
+
+      const allReviews = await db.select().from(kraGoalReviews).where(
+        and(
+          inArray(kraGoalReviews.employeeId, memberIds),
+          inArray(kraGoalReviews.status, ['submitted', 'approved'])
+        )
+      );
+
+      const currentPeriodReviews = allReviews.filter(r => {
+        const pStart = new Date(r.periodStartDate);
+        const pEnd = new Date(r.periodEndDate);
+        return pEnd >= from && pStart <= to;
+      });
+
+      const kpiTrendMap = new Map<string, {
+        kpiId: string; kpiName: string; kpiCode: string;
+        frequency: string;
+        period: string;
+        target: number; actual: number; pipeline: number;
+        prevActuals: number[];
+      }>();
+
+      const kpiAllReviewsMap = new Map<string, typeof allReviews>();
+      for (const r of allReviews) {
+        const key = r.kpiId;
+        if (!kpiAllReviewsMap.has(key)) {
+          kpiAllReviewsMap.set(key, []);
+        }
+        kpiAllReviewsMap.get(key)!.push(r);
+      }
+
+      for (const review of currentPeriodReviews) {
+        const kpi = kpiMap.get(review.kpiId);
+        const target = allTargets.find(t => t.id === review.kpiTargetId);
+        const kra = target ? kraMap.get(target.kraId) : null;
+        if (!kpi) continue;
+
+        const freq = kra?.reviewFrequencyId ? freqMap.get(kra.reviewFrequencyId) : null;
+        const freqCode = freq?.code || '-';
+
+        const defaultTargetNum = target ? (parseFloat(target.targetValue) || 0) : 0;
+        const periodTarget = target ? await storage.getKpiTargetHistoryForPeriod(target.id, new Date(review.periodStartDate)) : null;
+        const targetNum = periodTarget ? (parseFloat(periodTarget.targetValue) || 0) : defaultTargetNum;
+        const actualNum = parseFloat(review.selfRating || '0') || 0;
+        const pipelineNum = parseFloat(review.pipelineValue || '0') || 0;
+
+        const pStartDate = new Date(review.periodStartDate);
+        const pEndDate = new Date(review.periodEndDate);
+        const periodStr = `${String(pStartDate.getDate()).padStart(2, '0')}/${String(pStartDate.getMonth() + 1).padStart(2, '0')}/${pStartDate.getFullYear()} - ${String(pEndDate.getDate()).padStart(2, '0')}/${String(pEndDate.getMonth() + 1).padStart(2, '0')}/${pEndDate.getFullYear()}`;
+
+        if (!kpiTrendMap.has(review.kpiId)) {
+          const allKpiReviews = kpiAllReviewsMap.get(review.kpiId) || [];
+          const uniquePeriods = [...new Map(
+            allKpiReviews.map(r => [r.periodKey, { start: new Date(r.periodStartDate), end: new Date(r.periodEndDate) }])
+          ).entries()]
+            .sort((a, b) => a[1].start.getTime() - b[1].start.getTime());
+
+          const currentPeriodKeys = new Set(
+            currentPeriodReviews.filter(r => r.kpiId === review.kpiId).map(r => r.periodKey)
+          );
+
+          const prevPeriods = uniquePeriods.filter(([key]) => !currentPeriodKeys.has(key))
+            .filter(([, dates]) => dates.end < from)
+            .slice(-3)
+            .reverse();
+
+          const prevActuals: number[] = [];
+          for (const [periodKey] of prevPeriods) {
+            const periodReviews = allKpiReviews.filter(r => r.periodKey === periodKey);
+            const totalActual = periodReviews.reduce((sum, r) => sum + (parseFloat(r.selfRating || '0') || 0), 0);
+            prevActuals.push(totalActual);
           }
-          employeeTrendMap.get(ev.employeeId)!.ratings.push({
-            period,
-            overallRating: ev.overallRating,
-            calibratedRating: ev.calibratedRating,
+          while (prevActuals.length < 3) {
+            prevActuals.push(0);
+          }
+
+          kpiTrendMap.set(review.kpiId, {
+            kpiId: kpi.id,
+            kpiName: kpi.name,
+            kpiCode: kpi.code,
+            frequency: freqCode,
+            period: periodStr,
+            target: 0,
+            actual: 0,
+            pipeline: 0,
+            prevActuals,
           });
         }
+
+        const agg = kpiTrendMap.get(review.kpiId)!;
+        agg.target += targetNum;
+        agg.actual += actualNum;
+        agg.pipeline += pipelineNum;
       }
 
-      res.json({
-        periods,
-        employees: Array.from(employeeTrendMap.values()),
-      });
+      const result = Array.from(kpiTrendMap.values()).map(agg => ({
+        kpi: agg.kpiName,
+        kpiCode: agg.kpiCode,
+        frequency: agg.frequency,
+        period: agg.period,
+        target: agg.target,
+        actual: agg.actual,
+        prevPeriod1: agg.prevActuals[0],
+        prevPeriod2: agg.prevActuals[1],
+        prevPeriod3: agg.prevActuals[2],
+        pipeline: agg.pipeline,
+      }));
+
+      result.sort((a, b) => a.kpi.localeCompare(b.kpi));
+
+      res.json(result);
     } catch (error: any) {
       console.error("Error generating trend report:", error);
       res.status(500).json({ message: "Failed to generate report" });
