@@ -67,7 +67,7 @@ const navItems: NavItem[] = [
   { href: "/manager-submissions", label: "Submissions", icon: ClipboardList, roles: ["manager"] },
   { href: "/meetings", label: "Meetings", icon: Calendar, roles: ["employee", "manager"] },
   { href: "/set-targets", label: "Set Targets for KRA/Goal", icon: Target, roles: ["manager"] },
-  { href: "/manager-kra-reviews", label: "KRAs/Goals Review", icon: ClipboardList, roles: ["manager", "employee"] },
+  { href: "/manager-kra-reviews", label: "KRAs/Goals Review", icon: ClipboardList, roles: ["manager"] },
   { href: "/member-development-goals", label: "Member Development Goals", icon: Target, roles: ["manager"] },
   { href: "/development-goals", label: "My Development Goals", icon: Target, roles: ["employee"] },
   { href: "/kra-goals-self-review", label: "KRAs/Goals Self Review", icon: ClipboardList, roles: ["employee"] },
@@ -89,9 +89,11 @@ export function Sidebar() {
     enabled: !!user,
   });
 
+  const availableRoles: string[] = (user as any)?.availableRoles || [(user as any)?.role || "employee"];
+
   const filteredNavItems = navItems.filter((item) => {
     if (!item.roles) return true;
-    return item.roles.includes(activeRole);
+    return item.roles.some((r: string) => availableRoles.includes(r));
   });
 
   return (
