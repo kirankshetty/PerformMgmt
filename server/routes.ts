@@ -6784,13 +6784,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const uniqueKraIds = [...new Set(reviews.map(r => r.kraId).filter(Boolean))];
       const kraMap = new Map<string, any>();
       const kpiMap = new Map<string, any>();
+      const rfMap = new Map<string, any>();
       for (const kraId of uniqueKraIds) {
         const kra = await storage.getKraById(kraId);
         if (kra) {
           kraMap.set(kraId, kra);
+          if (kra.reviewFrequencyId && !rfMap.has(kra.reviewFrequencyId)) {
+            const rf = await storage.getReviewFrequency(kra.reviewFrequencyId, kra.createdById);
+            if (rf) rfMap.set(kra.reviewFrequencyId, rf);
+          }
           const kraKpis = await storage.getKpisByKraId(kraId);
           for (const kpi of kraKpis) {
             kpiMap.set(kpi.id, kpi);
+          }
+        }
+      }
+
+      const kpiTargetMap = new Map<string, any>();
+      const uniqueKpiTargetIds = [...new Set(reviews.map(r => r.kpiTargetId).filter(Boolean))];
+      for (const review of reviews) {
+        if (review.kpiTargetId && !kpiTargetMap.has(review.kpiTargetId)) {
+          const targets = await storage.getKpiTargetsByEmployee(review.employeeId);
+          for (const t of targets) {
+            kpiTargetMap.set(t.id, t);
           }
         }
       }
@@ -6799,6 +6815,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const employee = userMap.get(r.employeeId);
         const kpi = kpiMap.get(r.kpiId);
         const kra = kraMap.get(r.kraId);
+        const kpiTarget = kpiTargetMap.get(r.kpiTargetId);
+        const reviewFreq = kra?.reviewFrequencyId ? rfMap.get(kra.reviewFrequencyId) : null;
         return {
           ...r,
           employeeName: employee ? `${employee.firstName || ''} ${employee.lastName || ''}`.trim() : 'Unknown',
@@ -6807,8 +6825,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           kpiCode: kpi?.code || '',
           kpiName: kpi?.name || '',
           kpiInputType: kpi?.inputType || '',
+          kpiWeightage: kpi?.weightageContribution || 0,
           kraCode: kra?.code || '',
           kraName: kra?.name || '',
+          reviewFrequency: reviewFreq?.description || reviewFreq?.code || '',
+          targetValue: kpiTarget?.targetValue || '',
+          thresholdValue: kpiTarget?.thresholdValue || '',
         };
       });
 

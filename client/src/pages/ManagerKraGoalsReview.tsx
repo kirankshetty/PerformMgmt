@@ -42,19 +42,12 @@ interface ReviewItem {
   kpiCode: string;
   kpiName: string;
   kpiInputType: string;
+  kpiWeightage: number;
   kraCode: string;
   kraName: string;
-}
-
-interface EmployeeSummary {
-  employeeId: string;
-  employeeName: string;
-  employeeCode: string;
-  employeeEmail: string;
-  submittedCount: number;
-  approvedCount: number;
-  rejectedCount: number;
-  totalCount: number;
+  reviewFrequency: string;
+  targetValue: string;
+  thresholdValue: string;
 }
 
 export default function ManagerKraGoalsReview() {
@@ -89,30 +82,9 @@ export default function ManagerKraGoalsReview() {
     },
   });
 
-  const employeeSummaries: EmployeeSummary[] = [];
-  if (reviews) {
-    const empMap = new Map<string, EmployeeSummary>();
-    for (const r of reviews) {
-      if (!empMap.has(r.employeeId)) {
-        empMap.set(r.employeeId, {
-          employeeId: r.employeeId,
-          employeeName: r.employeeName,
-          employeeCode: r.employeeCode,
-          employeeEmail: r.employeeEmail,
-          submittedCount: 0,
-          approvedCount: 0,
-          rejectedCount: 0,
-          totalCount: 0,
-        });
-      }
-      const summary = empMap.get(r.employeeId)!;
-      summary.totalCount++;
-      if (r.status === 'submitted') summary.submittedCount++;
-      if (r.status === 'approved') summary.approvedCount++;
-      if (r.status === 'rejected') summary.rejectedCount++;
-    }
-    employeeSummaries.push(...Array.from(empMap.values()));
-  }
+  const pendingCount = reviews?.filter(r => r.status === 'submitted').length || 0;
+  const approvedCount = reviews?.filter(r => r.status === 'approved').length || 0;
+  const rejectedCount = reviews?.filter(r => r.status === 'rejected').length || 0;
 
   const employeeReviews = reviews?.filter(r => r.employeeId === selectedEmployee) || [];
 
@@ -443,7 +415,7 @@ export default function ManagerKraGoalsReview() {
           <CardContent className="p-4 flex items-center gap-3">
             <Clock className="h-8 w-8 text-blue-500" />
             <div>
-              <p className="text-2xl font-bold">{employeeSummaries.reduce((sum, e) => sum + e.submittedCount, 0)}</p>
+              <p className="text-2xl font-bold">{pendingCount}</p>
               <p className="text-xs text-muted-foreground">Pending Review</p>
             </div>
           </CardContent>
@@ -452,7 +424,7 @@ export default function ManagerKraGoalsReview() {
           <CardContent className="p-4 flex items-center gap-3">
             <CheckCircle className="h-8 w-8 text-green-500" />
             <div>
-              <p className="text-2xl font-bold">{employeeSummaries.reduce((sum, e) => sum + e.approvedCount, 0)}</p>
+              <p className="text-2xl font-bold">{approvedCount}</p>
               <p className="text-xs text-muted-foreground">Approved</p>
             </div>
           </CardContent>
@@ -461,7 +433,7 @@ export default function ManagerKraGoalsReview() {
           <CardContent className="p-4 flex items-center gap-3">
             <XCircle className="h-8 w-8 text-red-500" />
             <div>
-              <p className="text-2xl font-bold">{employeeSummaries.reduce((sum, e) => sum + e.rejectedCount, 0)}</p>
+              <p className="text-2xl font-bold">{rejectedCount}</p>
               <p className="text-xs text-muted-foreground">Rejected</p>
             </div>
           </CardContent>
@@ -470,61 +442,72 @@ export default function ManagerKraGoalsReview() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Employees with Submitted KPIs</CardTitle>
+          <CardTitle>Submitted KPIs</CardTitle>
         </CardHeader>
         <CardContent>
-          {employeeSummaries.length === 0 ? (
+          {!reviews || reviews.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Target className="h-12 w-12 mx-auto mb-3 opacity-50" />
-              <p>No employees have submitted KPIs for review</p>
+              <p>No KPIs have been submitted for review</p>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Employee Code</TableHead>
-                  <TableHead>Employee Name</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Pending</TableHead>
-                  <TableHead>Approved</TableHead>
-                  <TableHead>Rejected</TableHead>
-                  <TableHead>Total</TableHead>
-                  <TableHead></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {employeeSummaries.map((emp) => (
-                  <TableRow
-                    key={emp.employeeId}
-                    className="cursor-pointer hover:bg-muted/50"
-                    onClick={() => setSelectedEmployee(emp.employeeId)}
-                  >
-                    <TableCell className="font-medium">{emp.employeeCode}</TableCell>
-                    <TableCell>{emp.employeeName}</TableCell>
-                    <TableCell>{emp.employeeEmail}</TableCell>
-                    <TableCell>
-                      {emp.submittedCount > 0 && (
-                        <Badge className="bg-blue-100 text-blue-800">{emp.submittedCount}</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {emp.approvedCount > 0 && (
-                        <Badge className="bg-green-100 text-green-800">{emp.approvedCount}</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {emp.rejectedCount > 0 && (
-                        <Badge variant="destructive">{emp.rejectedCount}</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>{emp.totalCount}</TableCell>
-                    <TableCell>
-                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                    </TableCell>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Employee Code</TableHead>
+                    <TableHead>Employee Name</TableHead>
+                    <TableHead>KPI Name</TableHead>
+                    <TableHead>Review Frequency</TableHead>
+                    <TableHead>Weightage</TableHead>
+                    <TableHead>Period</TableHead>
+                    <TableHead>Target Value</TableHead>
+                    <TableHead>Threshold Value</TableHead>
+                    <TableHead>Actual Value</TableHead>
+                    <TableHead>Pipeline Value</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {reviews.map((review) => {
+                    const periodStart = new Date(review.periodStartDate);
+                    const periodEnd = new Date(review.periodEndDate);
+                    const periodDisplay = `${periodStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${periodEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+                    const getStatusBadge = (status: string) => {
+                      switch (status) {
+                        case 'submitted': return <Badge className="bg-blue-100 text-blue-800">Pending</Badge>;
+                        case 'approved': return <Badge className="bg-green-100 text-green-800">Approved</Badge>;
+                        case 'rejected': return <Badge variant="destructive">Rejected</Badge>;
+                        default: return <Badge variant="outline">{status}</Badge>;
+                      }
+                    };
+                    return (
+                      <TableRow
+                        key={review.id}
+                        className="cursor-pointer hover:bg-muted/50"
+                        onClick={() => setSelectedEmployee(review.employeeId)}
+                      >
+                        <TableCell className="font-medium">{review.employeeCode}</TableCell>
+                        <TableCell>{review.employeeName}</TableCell>
+                        <TableCell>{review.kpiName}</TableCell>
+                        <TableCell>{review.reviewFrequency}</TableCell>
+                        <TableCell>{review.kpiWeightage}%</TableCell>
+                        <TableCell className="text-sm whitespace-nowrap">{periodDisplay}</TableCell>
+                        <TableCell>{review.targetValue || '-'}</TableCell>
+                        <TableCell>{review.thresholdValue || '-'}</TableCell>
+                        <TableCell>{review.selfRating || '-'}</TableCell>
+                        <TableCell>{review.pipelineValue || '-'}</TableCell>
+                        <TableCell>{getStatusBadge(review.status)}</TableCell>
+                        <TableCell>
+                          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
           )}
         </CardContent>
       </Card>
